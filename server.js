@@ -465,18 +465,45 @@ app.post('/api/analyze-artist', async (req, res) => {
       spectralFeatures.mfcc = averageFeatures.mfcc_mean || 0;
     }
 
-    if (trackProfiles.length === 0) {
-      return res.json({
-        success: false,
-        error: 'No tracks could be analyzed with Essentia',
-        artistName,
-        tracksAttempted: totalAttempted
-      });
-    }
-
-    // Build genre mapping and sound characteristics
+    // Build genre mapping and sound characteristics (works even without track profiles)
     const genreMapping = await buildGenreMapping(trackProfiles, artistName, existingGenres);
     const recentEvolution = calculateRecentSoundEvolution(trackProfiles);
+
+    // If no tracks were analyzed but we have genre mapping from existing genres, return partial success
+    if (trackProfiles.length === 0) {
+      // Check if we at least have genre mapping from existing Spotify genres
+      if (genreMapping && genreMapping.inferredGenres && genreMapping.inferredGenres.length > 0) {
+        console.log(`✅ Partial success: No audio analysis but genres available for ${artistName}`);
+        return res.json({
+          success: true,
+          artistName,
+          spotifyId,
+          trackMatrix: [], // Empty track matrix
+          genreMapping: genreMapping, // Spotify genres available
+          recentEvolution: { evolution: 'insufficient_data' },
+          averageFeatures: {},
+          spectralFeatures: {},
+          metadata: {
+            totalTracksAnalyzed: 0,
+            tracksAttempted: totalAttempted,
+            topTracks: 0,
+            recentReleases: 0,
+            analysisRounds: 1,
+            successRate: 0,
+            hasGenreMapping: true,
+            hasAudioAnalysis: false
+          }
+        });
+      } else {
+        // Complete failure - no tracks and no genres
+        return res.json({
+          success: false,
+          error: 'No tracks could be analyzed with Essentia and no existing genres available',
+          artistName,
+          tracksAttempted: totalAttempted
+        });
+      }
+    }
 
     const result = {
       success: true,
