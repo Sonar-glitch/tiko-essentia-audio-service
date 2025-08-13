@@ -144,7 +144,7 @@ async function searchSoundCloudAudio(artistName, trackName) {
     // Use multiple SoundCloud client IDs for better reliability
     const clientIds = [
       process.env.SOUNDCLOUD_CLIENT_ID,
-      'lcKCKyUaMW1dgS42vr9wdJkSmrGRZcGh', // Backup client ID
+      '1cKCKyUaMW1dgS42vr9wdJkSmrGRZcGh', // Fresh client ID from new app
       'iZIs9mchVcX5lhVRyQGGAYlNPVldzAoJ', // Alternative client ID
       'fDoItMDbsbZz8dY16ZzARCZmzgHBPotA'  // Additional backup
     ].filter(Boolean);
