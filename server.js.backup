@@ -1,0 +1,1035 @@
+const express = require('express');
+const cors = require('cors');
+const { MongoClient } = require('mongodb');
+
+const app = express();
+const PORT = process.env.PORT || 3001;
+const MONGODB_URI = process.env.MONGODB_URI;
+
+// Middleware
+app.use(cors());
+app.use(express.json({ limit: '10mb' }));
+
+// MongoDB connection
+let db;
+MongoClient.connect(MONGODB_URI)
+  .then(client => {
+    console.log('📊 Connected to MongoDB');
+    db = client.db();
+  })
+  .catch(error => console.error('MongoDB connection error:', error));
+
+// Health check endpoint
+app.get('/health', (req, res) => {
+  res.json({ 
+    status: 'healthy', 
+    service: 'tiko-essentia-audio-service',
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+    mongodb: db ? 'connected' : 'disconnected'
+  });
+});
+
+// Audio analysis endpoint
+app.post('/api/analyze', async (req, res) => {
+  const startTime = Date.now();
+  
+  try {
+    const { audioUrl, trackId } = req.body;
+    
+    if (!audioUrl) {
+      return res.status(400).json({ error: 'audioUrl is required' });
+    }
+
+    console.log(`🎵 Analyzing audio: ${audioUrl.substring(0, 50)}...`);
+    
+    // Check if already analyzed
+    if (trackId && db) {
+      const existing = await db.collection('audio_features').findOne({ trackId });
+      if (existing && existing.source === 'essentia') {
+        console.log(`✅ Using cached Essentia analysis for ${trackId}`);
+        return res.json({
+          success: true,
+          features: existing.features,
+          source: 'essentia_cached',
+          confidence: existing.confidence,
+          processingTime: 0
+        });
+      }
+    }
+
+    // Perform Essentia.js analysis (mock implementation for now)
+    const features = await analyzeAudioWithEssentia(audioUrl);
+    
+    // Store results
+    if (trackId && features && db) {
+      await db.collection('audio_features').updateOne(
+        { trackId },
+        {
+          $set: {
+            trackId,
+            features,
+            source: 'essentia',
+            confidence: 0.90,
+            analyzedAt: new Date(),
+            processingTime: Date.now() - startTime
+          }
+        },
+        { upsert: true }
+      );
+    }
+
+    res.json({
+      success: true,
+      features,
+      source: 'essentia',
+      confidence: 0.90,
+      processingTime: Date.now() - startTime
+    });
+
+  } catch (error) {
+    console.error('Audio analysis error:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: error.message,
+      source: 'essentia_error'
+    });
+  }
+});
+
+// Batch analysis endpoint
+app.post('/api/batch', async (req, res) => {
+  try {
+    const { tracks } = req.body;
+    
+    if (!Array.isArray(tracks) || tracks.length === 0) {
+      return res.status(400).json({ error: 'tracks array is required' });
+    }
+
+    console.log(`🎵 Batch analyzing ${tracks.length} tracks`);
+    
+    const results = [];
+    const maxConcurrent = parseInt(process.env.MAX_CONCURRENT_ANALYSIS) || 5;
+    
+    for (let i = 0; i < tracks.length; i += maxConcurrent) {
+      const batch = tracks.slice(i, i + maxConcurrent);
+      const batchPromises = batch.map(track => 
+        analyzeTrackSafely(track.audioUrl, track.trackId)
+      );
+      
+      const batchResults = await Promise.allSettled(batchPromises);
+      results.push(...batchResults.map((result, index) => ({
+        trackId: batch[index].trackId,
+        success: result.status === 'fulfilled',
+        features: result.status === 'fulfilled' ? result.value : null,
+        error: result.status === 'rejected' ? result.reason.message : null
+      })));
+    }
+
+    res.json({
+      success: true,
+      results,
+      processed: results.length,
+      successful: results.filter(r => r.success).length
+    });
+
+  } catch (error) {
+    console.error('Batch analysis error:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: error.message 
+    });
+  }
+});
+
+// Artist analysis endpoint - gets top tracks + recent releases from Spotify, analyzes with Essentia
+app.post('/api/analyze-artist', async (req, res) => {
+  const startTime = Date.now();
+  
+  try {
+    const { artistName, spotifyId, maxTracks = 20, includeRecentReleases = true } = req.body;
+    
+    if (!artistName) {
+      return res.status(400).json({ error: 'artistName is required' });
+    }
+
+    console.log(`🎤 Analyzing artist: ${artistName}`);
+    console.log(`📊 Max tracks: ${maxTracks}, Recent releases: ${includeRecentReleases}`);
+    
+    // Get Spotify access token
+    const spotifyToken = await getSpotifyToken();
+    if (!spotifyToken) {
+      return res.json({
+        success: false,
+        error: 'Could not get Spotify access token'
+      });
+    }
+
+    let tracks = [];
+    
+    // 1. Get top tracks from Spotify
+    if (spotifyId) {
+      try {
+        const topTracksUrl = `https://api.spotify.com/v1/artists/${spotifyId}/top-tracks?market=US`;
+        const topTracksResponse = await fetch(topTracksUrl, {
+          headers: { 'Authorization': `Bearer ${spotifyToken}` }
+        });
+        
+        if (topTracksResponse.ok) {
+          const topTracksData = await topTracksResponse.json();
+          tracks = topTracksData.tracks || [];
+          console.log(`� Found ${tracks.length} top tracks`);
+        }
+      } catch (error) {
+        console.warn(`⚠️ Top tracks fetch failed: ${error.message}`);
+      }
+    }
+
+    // 2. Get recent releases (albums/singles from last 2 years)
+    if (includeRecentReleases && spotifyId && tracks.length < maxTracks) {
+      try {
+        const albumsUrl = `https://api.spotify.com/v1/artists/${spotifyId}/albums?market=US&include_groups=album,single&limit=20`;
+        const albumsResponse = await fetch(albumsUrl, {
+          headers: { 'Authorization': `Bearer ${spotifyToken}` }
+        });
+        
+        if (albumsResponse.ok) {
+          const albumsData = await albumsResponse.json();
+          console.log(`💿 Found ${albumsData.items?.length || 0} recent albums/singles`);
+          
+          // Get tracks from recent albums (last 2 years)
+          const twoYearsAgo = new Date();
+          twoYearsAgo.setFullYear(twoYearsAgo.getFullYear() - 2);
+          
+          for (const album of albumsData.items || []) {
+            if (tracks.length >= maxTracks) break;
+            
+            const releaseDate = new Date(album.release_date);
+            if (releaseDate >= twoYearsAgo) {
+              try {
+                const albumTracksUrl = `https://api.spotify.com/v1/albums/${album.id}/tracks?limit=5`;
+                const albumTracksResponse = await fetch(albumTracksUrl, {
+                  headers: { 'Authorization': `Bearer ${spotifyToken}` }
+                });
+                
+                if (albumTracksResponse.ok) {
+                  const albumTracksData = await albumTracksResponse.json();
+                  for (const track of albumTracksData.items || []) {
+                    if (tracks.length >= maxTracks) break;
+                    
+                    // Add album info and mark as recent release
+                    track.album = {
+                      id: album.id,
+                      name: album.name,
+                      release_date: album.release_date,
+                      type: album.album_type
+                    };
+                    track.isRecentRelease = true;
+                    tracks.push(track);
+                  }
+                }
+              } catch (albumError) {
+                console.warn(`⚠️ Failed to get tracks for album ${album.name}: ${albumError.message}`);
+              }
+            }
+          }
+          
+          console.log(`📅 Added ${tracks.filter(t => t.isRecentRelease).length} recent release tracks`);
+        }
+      } catch (error) {
+        console.warn(`⚠️ Recent releases fetch failed: ${error.message}`);
+      }
+    }
+
+    // 3. Search fallback if we don't have enough tracks
+    if (tracks.length === 0) {
+      try {
+        const searchUrl = `https://api.spotify.com/v1/search?q=artist:"${encodeURIComponent(artistName)}"&type=track&limit=${maxTracks}&market=US`;
+        const searchResponse = await fetch(searchUrl, {
+          headers: { 'Authorization': `Bearer ${spotifyToken}` }
+        });
+        
+        if (searchResponse.ok) {
+          const searchData = await searchResponse.json();
+          tracks = searchData.tracks?.items || [];
+          console.log(`🔍 Search fallback found ${tracks.length} tracks`);
+        }
+      } catch (error) {
+        console.warn(`⚠️ Search fallback failed: ${error.message}`);
+      }
+    }
+
+    if (tracks.length === 0) {
+      return res.json({
+        success: false,
+        error: 'No tracks found for artist',
+        artistName
+      });
+    }
+
+    // Limit tracks and prioritize top tracks over recent releases
+    const topTracks = tracks.filter(t => !t.isRecentRelease).slice(0, Math.floor(maxTracks * 0.7));
+    const recentTracks = tracks.filter(t => t.isRecentRelease).slice(0, Math.floor(maxTracks * 0.3));
+    const selectedTracks = [...topTracks, ...recentTracks].slice(0, maxTracks);
+    
+    console.log(`🎵 Selected ${selectedTracks.length} tracks (${topTracks.length} top tracks, ${recentTracks.length} recent releases)`);
+    
+    const trackProfiles = [];
+    const averageFeatures = {};
+    const spectralFeatures = {};
+    let featureCounts = {};
+
+    // Analyze each track with Essentia
+    for (let i = 0; i < selectedTracks.length; i++) {
+      const track = selectedTracks[i];
+      
+      try {
+        console.log(`   Analyzing track ${i+1}/${selectedTracks.length}: ${track.name}${track.isRecentRelease ? ' (recent)' : ''}...`);
+        
+        // Get preview URL (Spotify first, Apple fallback)
+        let previewUrl = track.preview_url;
+        if (!previewUrl) {
+          previewUrl = await findApplePreviewUrl(track.artists[0].name, track.name);
+        }
+        
+        if (previewUrl) {
+          const features = await analyzeAudioWithEssentia(previewUrl);
+          
+          trackProfiles.push({
+            trackId: track.id,
+            name: track.name,
+            artist: track.artists[0]?.name,
+            popularity: track.popularity,
+            isRecentRelease: track.isRecentRelease || false,
+            albumInfo: track.album || null,
+            previewUrl: previewUrl,
+            essentiaFeatures: features,
+            analyzedAt: new Date()
+          });
+          
+          // Aggregate for backward compatibility
+          for (const [key, value] of Object.entries(features)) {
+            if (typeof value === 'number' && !isNaN(value)) {
+              averageFeatures[key] = (averageFeatures[key] || 0) + value;
+              featureCounts[key] = (featureCounts[key] || 0) + 1;
+            }
+          }
+          
+          console.log(`     ✅ Track analysis complete`);
+        } else {
+          console.log(`     ⚠️ No preview URL for: ${track.name}`);
+        }
+        
+        // Small delay
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
+      } catch (error) {
+        console.warn(`⚠️ Failed to analyze ${track.name}:`, error.message);
+      }
+    }
+
+    // Calculate averages for backward compatibility
+    for (const [key, total] of Object.entries(averageFeatures)) {
+      if (featureCounts[key] > 0) {
+        averageFeatures[key] = total / featureCounts[key];
+      }
+    }
+
+    // Basic spectral features (placeholder for advanced analysis)
+    if (trackProfiles.length > 0) {
+      spectralFeatures.spectralCentroid = averageFeatures.spectral_centroid || 0;
+      spectralFeatures.spectralRolloff = averageFeatures.spectral_rolloff || 0;
+      spectralFeatures.mfcc = averageFeatures.mfcc_mean || 0;
+    }
+
+    if (trackProfiles.length === 0) {
+      return res.json({
+        success: false,
+        error: 'No tracks could be analyzed with Essentia',
+        artistName,
+        tracksAttempted: selectedTracks.length
+      });
+    }
+
+    // Enhanced artist profile with recent releases data
+    const artistProfile = {
+      artistName,
+      trackMatrix: trackProfiles, // Matrix of individual track features
+      trackCount: trackProfiles.length,
+      successfulAnalyses: trackProfiles.length,
+      totalTracksAttempted: selectedTracks.length,
+      topTracksAnalyzed: trackProfiles.filter(t => !t.isRecentRelease).length,
+      recentReleasesAnalyzed: trackProfiles.filter(t => t.isRecentRelease).length,
+      // Keep aggregates for backward compatibility, but trackMatrix is primary
+      averageFeatures,
+      spectralFeatures,
+      profileBuiltAt: new Date(),
+      essentiaVersion: '1.0',
+      source: 'essentia_ml_analysis',
+      previewSource: 'spotify_apple_hybrid',
+      processingTime: Date.now() - startTime,
+      // Genre mapping for artist-genre sound characteristics
+      genreMapping: {
+        dominantGenres: await inferGenresFromTracks(trackProfiles),
+        soundCharacteristics: calculateGenreSoundProfile(trackProfiles),
+        recentEvolution: calculateRecentSoundEvolution(trackProfiles)
+      }
+    };
+
+    res.json({
+      success: true,
+      profile: artistProfile,
+      tracksAnalyzed: trackProfiles.length,
+      processingTime: Date.now() - startTime
+    });
+
+  } catch (error) {
+    console.error('Artist analysis error:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: error.message,
+      artistName: req.body.artistName 
+    });
+  }
+});
+        
+        if (searchResponse.ok) {
+          const searchData = await searchResponse.json();
+          tracks = searchData.tracks?.items || [];
+          console.log(`🔍 Search fallback found ${tracks.length} tracks`);
+        }
+      } catch (error) {
+        console.warn(`⚠️ Search fallback failed: ${error.message}`);
+      }
+    }
+
+    if (tracks.length === 0) {
+      return res.json({
+        success: false,
+        error: 'No tracks found for artist',
+        artistName
+      });
+    }
+
+    // Limit tracks and prioritize top tracks over recent releases
+    const topTracks = tracks.filter(t => !t.isRecentRelease).slice(0, Math.floor(maxTracks * 0.7));
+    const recentTracks = tracks.filter(t => t.isRecentRelease).slice(0, Math.floor(maxTracks * 0.3));
+    const selectedTracks = [...topTracks, ...recentTracks].slice(0, maxTracks);
+    
+    console.log(`🎵 Selected ${selectedTracks.length} tracks (${topTracks.length} top tracks, ${recentTracks.length} recent releases)`);
+    
+    const trackProfiles = [];
+    const averageFeatures = {};
+    const spectralFeatures = {};
+    let featureCounts = {};
+
+    // Analyze each track with Essentia
+    for (let i = 0; i < selectedTracks.length; i++) {
+      const track = selectedTracks[i];
+      
+      try {
+        console.log(`   Analyzing track ${i+1}/${selectedTracks.length}: ${track.name}${track.isRecentRelease ? ' (recent)' : ''}...`);
+        
+        // Get preview URL (Spotify first, Apple fallback)
+        let previewUrl = track.preview_url;
+        if (!previewUrl) {
+          previewUrl = await findApplePreviewUrl(track.artists[0].name, track.name);
+        }
+        
+        if (previewUrl) {
+          const features = await analyzeAudioWithEssentia(previewUrl);
+          
+          trackProfiles.push({
+            trackId: track.id,
+            name: track.name,
+            artist: track.artists[0]?.name,
+            popularity: track.popularity,
+            isRecentRelease: track.isRecentRelease || false,
+            albumInfo: track.album || null,
+            previewUrl: previewUrl,
+            essentiaFeatures: features,
+            analyzedAt: new Date()
+          });
+          
+          // Aggregate for backward compatibility
+          for (const [key, value] of Object.entries(features)) {
+            if (typeof value === 'number' && !isNaN(value)) {
+              averageFeatures[key] = (averageFeatures[key] || 0) + value;
+              featureCounts[key] = (featureCounts[key] || 0) + 1;
+            }
+          }
+          
+          console.log(`     ✅ Track analysis complete`);
+        } else {
+          console.log(`     ⚠️ No preview URL for: ${track.name}`);
+        }
+        
+        // Small delay
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
+      } catch (error) {
+        console.warn(`⚠️ Failed to analyze ${track.name}:`, error.message);
+      }
+    }
+
+    // Calculate averages for backward compatibility
+    for (const [key, total] of Object.entries(averageFeatures)) {
+      if (featureCounts[key] > 0) {
+        averageFeatures[key] = total / featureCounts[key];
+      }
+    }
+
+    // Basic spectral features (placeholder for advanced analysis)
+    if (trackProfiles.length > 0) {
+      spectralFeatures.spectralCentroid = averageFeatures.spectral_centroid || 0;
+      spectralFeatures.spectralRolloff = averageFeatures.spectral_rolloff || 0;
+      spectralFeatures.mfcc = averageFeatures.mfcc_mean || 0;
+    }
+
+// User sound profile matrix endpoint - build from recent 10 tracks
+app.post('/api/user-profile', async (req, res) => {
+  const startTime = Date.now();
+  
+  try {
+    const { userId, recentTracks, maxTracks = 10 } = req.body;
+    
+    if (!userId || !recentTracks || !Array.isArray(recentTracks)) {
+      return res.status(400).json({ error: 'userId and recentTracks array required' });
+    }
+
+    console.log(`👤 Building user sound profile matrix for: ${userId}`);
+    console.log(`🎵 Analyzing ${Math.min(recentTracks.length, maxTracks)} recent tracks`);
+    
+    const userTrackProfiles = [];
+    const tracksToAnalyze = recentTracks.slice(0, maxTracks);
+    
+    for (let i = 0; i < tracksToAnalyze.length; i++) {
+      const track = tracksToAnalyze[i];
+      
+      try {
+        console.log(`   Analyzing user track ${i+1}/${tracksToAnalyze.length}: ${track.name}...`);
+        
+        // Get preview URL (Spotify first, Apple fallback)
+        let previewUrl = track.preview_url;
+        if (!previewUrl && track.artists && track.name) {
+          previewUrl = await findApplePreviewUrl(track.artists[0].name, track.name);
+        }
+        
+        if (previewUrl) {
+          const features = await analyzeAudioWithEssentia(previewUrl);
+          
+          userTrackProfiles.push({
+            trackId: track.id,
+            name: track.name,
+            artist: track.artists[0]?.name,
+            popularity: track.popularity,
+            previewUrl: previewUrl,
+            essentiaFeatures: features,
+            listenedAt: track.played_at || new Date(),
+            analyzedAt: new Date()
+          });
+          
+          console.log(`     ✅ User track analysis complete`);
+        } else {
+          console.log(`     ⚠️ No preview URL for user track: ${track.name}`);
+        }
+        
+        // Small delay
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
+      } catch (error) {
+        console.warn(`⚠️ Failed to analyze user track ${track.name}:`, error.message);
+      }
+    }
+
+    if (userTrackProfiles.length === 0) {
+      return res.json({
+        success: false,
+        error: 'No user tracks could be analyzed',
+        userId,
+        tracksAttempted: tracksToAnalyze.length
+      });
+    }
+
+    // Build user sound profile matrix (no aggregation)
+    const userSoundProfile = {
+      userId,
+      trackMatrix: userTrackProfiles, // Matrix of user's track features
+      trackCount: userTrackProfiles.length,
+      recentTracksAnalyzed: userTrackProfiles.length,
+      totalTracksAttempted: tracksToAnalyze.length,
+      profileBuiltAt: new Date(),
+      essentiaVersion: '1.0',
+      source: 'user_recent_tracks',
+      // Calculate user preferences for matching (but keep individual track data)
+      soundPreferences: calculateUserSoundPreferences(userTrackProfiles),
+      processingTime: Date.now() - startTime
+    };
+
+    // Store user profile in database
+    if (db) {
+      await db.collection('user_sound_profiles').updateOne(
+        { userId },
+        {
+          $set: {
+            ...userSoundProfile,
+            updatedAt: new Date()
+          }
+        },
+        { upsert: true }
+      );
+    }
+
+    res.json({
+      success: true,
+      profile: userSoundProfile,
+      tracksAnalyzed: userTrackProfiles.length,
+      processingTime: Date.now() - startTime
+    });
+
+  } catch (error) {
+    console.error('User profile analysis error:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: error.message,
+      userId: req.body.userId 
+    });
+  }
+});
+
+// Mock Essentia.js analysis function (will be replaced with real implementation)
+async function analyzeAudioWithEssentia(audioUrl) {
+  const startTime = Date.now();
+  
+  try {
+    // Simulate processing time
+    await new Promise(resolve => setTimeout(resolve, 1000 + Math.random() * 2000));
+    
+    // Generate realistic mock features
+    const mockFeatures = {
+      energy: Math.random() * 0.5 + 0.5,        // 0.5-1.0
+      danceability: Math.random() * 0.4 + 0.6,  // 0.6-1.0
+      valence: Math.random() * 0.6 + 0.2,       // 0.2-0.8
+      tempo: Math.random() * 40 + 120,          // 120-160 BPM
+      spectralCentroid: Math.random() * 2000 + 1000, // 1000-3000 Hz
+      mfcc: Array.from({ length: 13 }, () => Math.random() * 20 - 10),
+      spectralRolloff: Math.random() * 5000 + 3000,
+      zcr: Math.random() * 0.2 + 0.05
+    };
+
+    console.log(`✅ Essentia analysis completed in ${Date.now() - startTime}ms`);
+    return mockFeatures;
+    
+  } catch (error) {
+    console.error('Essentia analysis failed:', error);
+    throw error;
+  }
+}
+
+async function analyzeTrackSafely(audioUrl, trackId) {
+  try {
+    return await analyzeAudioWithEssentia(audioUrl);
+  } catch (error) {
+    console.error(`Failed to analyze track ${trackId}:`, error);
+    throw error;
+  }
+}
+
+// Get artist tracks with preview URLs - hybrid approach
+async function getArtistTracksWithPreviews(artistName, maxTracks = 20) {
+  try {
+    console.log(`🎵 Getting TOP TRACKS for: ${artistName}`);
+    
+    // Step 1: Get TOP TRACKS from Spotify (best source for popularity/ranking)
+    const spotifyTracks = await getSpotifyTopTracks(artistName);
+    
+    if (spotifyTracks.length === 0) {
+      console.log(`⚠️ No Spotify tracks found, falling back to Apple iTunes search`);
+      return await getAppleItunesTracksOnly(artistName, maxTracks);
+    }
+    
+    console.log(`✅ Found ${spotifyTracks.length} top tracks from Spotify`);
+    
+    // Step 2: For each Spotify track, try to find preview URL from Apple iTunes
+    const tracksWithPreviews = [];
+    
+    for (const spotifyTrack of spotifyTracks.slice(0, maxTracks)) {
+      let previewUrl = spotifyTrack.preview_url;
+      
+      // If Spotify doesn't have preview, try Apple iTunes
+      if (!previewUrl) {
+        previewUrl = await findApplePreviewUrl(spotifyTrack.artists[0].name, spotifyTrack.name);
+      }
+      
+      if (previewUrl) {
+        tracksWithPreviews.push({
+          id: spotifyTrack.id,
+          name: spotifyTrack.name,
+          artist: spotifyTrack.artists[0].name,
+          album: spotifyTrack.album?.name,
+          duration: spotifyTrack.duration_ms,
+          previewUrl: previewUrl,
+          popularity: spotifyTrack.popularity, // Important: actual popularity from Spotify
+          explicit: spotifyTrack.explicit,
+          source: spotifyTrack.preview_url ? 'spotify' : 'apple_itunes'
+        });
+        
+        console.log(`   ✅ ${spotifyTrack.name} - preview from ${tracksWithPreviews[tracksWithPreviews.length-1].source}`);
+      } else {
+        console.log(`   ⚠️ ${spotifyTrack.name} - no preview URL found`);
+      }
+      
+      // Small delay to avoid rate limiting
+      await new Promise(resolve => setTimeout(resolve, 200));
+    }
+    
+    console.log(`📊 Final result: ${tracksWithPreviews.length} tracks with preview URLs`);
+    return tracksWithPreviews;
+    
+  } catch (error) {
+    console.error(`❌ Error getting tracks for ${artistName}:`, error.message);
+    // Fallback to Apple iTunes only
+    return await getAppleItunesTracksOnly(artistName, maxTracks);
+  }
+}
+
+// Get top tracks from Spotify API
+async function getSpotifyTopTracks(artistName) {
+  try {
+    const SpotifyApi = require('spotify-web-api-node');
+    
+    const spotifyApi = new SpotifyApi({
+      clientId: process.env.SPOTIFY_CLIENT_ID,
+      clientSecret: process.env.SPOTIFY_CLIENT_SECRET
+    });
+    
+    // Get access token
+    const data = await spotifyApi.clientCredentialsGrant();
+    spotifyApi.setAccessToken(data.body['access_token']);
+    
+    // Search for artist
+    const searchResults = await spotifyApi.searchArtists(artistName, { limit: 1 });
+    if (searchResults.body.artists.items.length === 0) {
+      console.log(`⚠️ Artist not found on Spotify: ${artistName}`);
+      return [];
+    }
+    
+    const spotifyArtistId = searchResults.body.artists.items[0].id;
+    console.log(`🔍 Found Spotify artist ID: ${spotifyArtistId}`);
+    
+    // Get top tracks (these are ordered by popularity)
+    const topTracksData = await spotifyApi.getArtistTopTracks(spotifyArtistId, 'US');
+    
+    return topTracksData.body.tracks || [];
+    
+  } catch (error) {
+    console.error(`❌ Spotify API error for ${artistName}:`, error.message);
+    return [];
+  }
+}
+
+// Find preview URL for a specific track on Apple iTunes
+async function findApplePreviewUrl(artistName, trackName) {
+  try {
+    const fetch = (await import('node-fetch')).default;
+    
+    const query = `${artistName} ${trackName}`;
+    const searchParams = new URLSearchParams({
+      term: query,
+      media: 'music',
+      entity: 'song',
+      limit: 5,
+      country: 'US'
+    });
+    
+    const url = `https://itunes.apple.com/search?${searchParams.toString()}`;
+    const response = await fetch(url, { timeout: 5000 });
+    
+    if (!response.ok) return null;
+    
+    const data = await response.json();
+    
+    if (data.results && data.results.length > 0) {
+      // Find best match
+      for (const result of data.results) {
+        if (result.previewUrl && 
+            result.artistName?.toLowerCase().includes(artistName.toLowerCase()) &&
+            result.trackName?.toLowerCase().includes(trackName.toLowerCase())) {
+          return result.previewUrl;
+        }
+      }
+      
+      // Fallback: return first result with preview URL
+      const withPreview = data.results.find(r => r.previewUrl);
+      return withPreview?.previewUrl || null;
+    }
+    
+    return null;
+    
+  } catch (error) {
+    console.error(`❌ Apple iTunes search failed for ${trackName}:`, error.message);
+    return null;
+  }
+}
+
+// Fallback: Get tracks from Apple iTunes only (when Spotify fails)
+async function getAppleItunesTracksOnly(artistName, maxTracks = 20) {
+  try {
+    const fetch = (await import('node-fetch')).default;
+    
+    console.log(`🍎 Fallback: Searching Apple iTunes only for: ${artistName}`);
+    
+    const searchParams = new URLSearchParams({
+      term: artistName,
+      media: 'music',
+      entity: 'song',
+      attribute: 'artistTerm',
+      limit: Math.min(maxTracks, 50),
+      country: 'US',
+      explicit: 'Yes'
+    });
+    
+    const url = `https://itunes.apple.com/search?${searchParams.toString()}`;
+    
+    const response = await fetch(url, { timeout: 10000 });
+    
+    if (!response.ok) {
+      throw new Error(`iTunes API error: ${response.status}`);
+    }
+    
+    const data = await response.json();
+    
+    if (!data.results || data.results.length === 0) {
+      console.log(`⚠️ No iTunes results found for artist: ${artistName}`);
+      return [];
+    }
+    
+    // Filter and process results
+    const tracks = data.results
+      .filter(track => {
+        // Filter for tracks that actually belong to the searched artist
+        const trackArtist = track.artistName?.toLowerCase() || '';
+        const searchArtist = artistName.toLowerCase();
+        
+        return trackArtist.includes(searchArtist) || searchArtist.includes(trackArtist);
+      })
+      .filter(track => {
+        // Only include tracks with preview URLs
+        return track.previewUrl && track.previewUrl.length > 0;
+      })
+      .map(track => ({
+        id: track.trackId,
+        name: track.trackName,
+        artist: track.artistName,
+        album: track.collectionName,
+        duration: track.trackTimeMillis,
+        previewUrl: track.previewUrl,
+        popularity: 50, // Default since Apple doesn't provide popularity
+        explicit: track.trackExplicitness === 'explicit',
+        source: 'apple_itunes'
+      }))
+      .slice(0, maxTracks);
+    
+    console.log(`✅ iTunes found ${tracks.length} tracks with preview URLs`);
+    return tracks;
+    
+  } catch (error) {
+    console.error(`❌ iTunes search failed for ${artistName}:`, error.message);
+    return [];
+  }
+}
+
+// Calculate average features across all tracks
+function calculateAverageFeatures(trackProfiles) {
+  if (trackProfiles.length === 0) return {};
+  
+  const features = {};
+  const featureCounts = {};
+  
+  // Aggregate all features
+  for (const track of trackProfiles) {
+    if (track.essentiaFeatures) {
+      for (const [key, value] of Object.entries(track.essentiaFeatures)) {
+        if (typeof value === 'number' && !isNaN(value)) {
+          features[key] = (features[key] || 0) + value;
+          featureCounts[key] = (featureCounts[key] || 0) + 1;
+        }
+      }
+    }
+  }
+  
+  // Calculate averages
+  const averages = {};
+  for (const [key, total] of Object.entries(features)) {
+    if (featureCounts[key] > 0) {
+      averages[key] = total / featureCounts[key];
+    }
+  }
+  
+  return averages;
+}
+
+// Calculate spectral features
+function calculateSpectralFeatures(trackProfiles) {
+  const spectralData = {
+    spectralCentroid: [],
+    spectralRolloff: [],
+    zeroCrossingRate: [],
+    mfcc: []
+  };
+  
+  for (const track of trackProfiles) {
+    if (track.essentiaFeatures) {
+      const features = track.essentiaFeatures;
+      
+      if (features.spectralCentroid) spectralData.spectralCentroid.push(features.spectralCentroid);
+      if (features.spectralRolloff) spectralData.spectralRolloff.push(features.spectralRolloff);
+      if (features.zcr) spectralData.zeroCrossingRate.push(features.zcr);
+      if (features.mfcc) spectralData.mfcc.push(features.mfcc);
+    }
+  }
+  
+  // Calculate averages for spectral features
+  const spectralAverages = {};
+  for (const [key, values] of Object.entries(spectralData)) {
+    if (values.length > 0 && key !== 'mfcc') {
+      spectralAverages[key] = values.reduce((sum, val) => sum + val, 0) / values.length;
+    }
+  }
+  
+  return spectralAverages;
+}
+
+// Calculate recent sound evolution from top tracks vs recent releases
+function calculateRecentSoundEvolution(trackProfiles) {
+  const topTracks = trackProfiles.filter(t => !t.isRecentRelease);
+  const recentTracks = trackProfiles.filter(t => t.isRecentRelease);
+  
+  if (topTracks.length === 0 || recentTracks.length === 0) {
+    return { evolution: 'stable', changes: [] };
+  }
+  
+  const avgTop = {};
+  const avgRecent = {};
+  const features = ['danceability', 'energy', 'valence', 'acousticness', 'tempo'];
+  
+  // Calculate averages for top tracks
+  for (const feature of features) {
+    const values = topTracks.map(t => t.essentiaFeatures[feature]).filter(v => v !== undefined);
+    avgTop[feature] = values.length > 0 ? values.reduce((a, b) => a + b, 0) / values.length : 0;
+  }
+  
+  // Calculate averages for recent tracks
+  for (const feature of features) {
+    const values = recentTracks.map(t => t.essentiaFeatures[feature]).filter(v => v !== undefined);
+    avgRecent[feature] = values.length > 0 ? values.reduce((a, b) => a + b, 0) / values.length : 0;
+  }
+  
+  const changes = [];
+  for (const feature of features) {
+    const change = avgRecent[feature] - avgTop[feature];
+    if (Math.abs(change) > 0.1) { // Significant change threshold
+      changes.push({
+        feature,
+        direction: change > 0 ? 'increase' : 'decrease',
+        magnitude: Math.abs(change)
+      });
+    }
+  }
+  
+  return {
+    evolution: changes.length > 2 ? 'evolving' : changes.length > 0 ? 'slight_change' : 'stable',
+    changes,
+    topTracksAverage: avgTop,
+    recentTracksAverage: avgRecent
+  };
+}
+
+// Calculate user sound preferences from track matrix
+function calculateUserSoundPreferences(userTrackProfiles) {
+  if (userTrackProfiles.length === 0) return {};
+  
+  const preferences = {};
+  const featureCounts = {};
+  
+  // Aggregate user's track features to understand preferences
+  for (const track of userTrackProfiles) {
+    if (track.essentiaFeatures) {
+      for (const [key, value] of Object.entries(track.essentiaFeatures)) {
+        if (typeof value === 'number' && !isNaN(value)) {
+          preferences[key] = (preferences[key] || 0) + value;
+          featureCounts[key] = (featureCounts[key] || 0) + 1;
+        }
+      }
+    }
+  }
+  
+  // Calculate average preferences
+  const avgPreferences = {};
+  for (const [key, total] of Object.entries(preferences)) {
+    if (featureCounts[key] > 0) {
+      avgPreferences[key] = total / featureCounts[key];
+    }
+  }
+  
+  return avgPreferences;
+}
+
+// Infer genres from track characteristics
+async function inferGenresFromTracks(trackProfiles) {
+  // Simple genre inference based on audio characteristics
+  const genres = [];
+  
+  for (const track of trackProfiles) {
+    if (track.essentiaFeatures) {
+      const features = track.essentiaFeatures;
+      
+      // EDM/Electronic detection
+      if (features.energy > 0.8 && features.danceability > 0.7) {
+        genres.push('electronic');
+      }
+      
+      // House/Techno detection
+      if (features.tempo >= 120 && features.tempo <= 135 && features.danceability > 0.8) {
+        genres.push('house');
+      }
+      
+      // Trance detection
+      if (features.tempo >= 130 && features.tempo <= 140 && features.energy > 0.7) {
+        genres.push('trance');
+      }
+      
+      // More genre inference logic can be added here
+    }
+  }
+  
+  // Return most common genres
+  const genreCounts = {};
+  genres.forEach(genre => {
+    genreCounts[genre] = (genreCounts[genre] || 0) + 1;
+  });
+  
+  return Object.entries(genreCounts)
+    .sort(([,a], [,b]) => b - a)
+    .slice(0, 3)
+    .map(([genre]) => genre);
+}
+
+// Calculate genre sound profile characteristics
+function calculateGenreSoundProfile(trackProfiles) {
+  const avgFeatures = calculateAverageFeatures(trackProfiles);
+  
+  // Map features to sound characteristics
+  return {
+    energy_level: avgFeatures.energy > 0.7 ? 'high' : avgFeatures.energy > 0.4 ? 'medium' : 'low',
+    danceability_level: avgFeatures.danceability > 0.7 ? 'high' : avgFeatures.danceability > 0.4 ? 'medium' : 'low',
+    tempo_range: avgFeatures.tempo > 130 ? 'fast' : avgFeatures.tempo > 100 ? 'medium' : 'slow',
+    mood: avgFeatures.valence > 0.6 ? 'positive' : avgFeatures.valence > 0.4 ? 'neutral' : 'melancholic'
+  };
+}
+
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`🎵 Essentia Audio Service running on port ${PORT}`);
+  console.log(`🔗 Health check: http://localhost:${PORT}/health`);
+  console.log(`🎯 Analysis endpoint: http://localhost:${PORT}/api/analyze`);
+});

@@ -166,6 +166,7 @@ app.post('/api/analyze-artist', async (req, res) => {
       spotifyId, 
       maxTracks = 20, 
       includeRecentReleases = true,
+      existingGenres = [], // Existing Spotify genres from database
       spotifyCredentials // New: Accept Spotify credentials from frontend
     } = req.body;
     
@@ -474,7 +475,7 @@ app.post('/api/analyze-artist', async (req, res) => {
     }
 
     // Build genre mapping and sound characteristics
-    const genreMapping = await buildGenreMapping(trackProfiles, artistName);
+    const genreMapping = await buildGenreMapping(trackProfiles, artistName, existingGenres);
     const recentEvolution = calculateRecentSoundEvolution(trackProfiles);
 
     const result = {
@@ -777,22 +778,48 @@ function calculateUserSoundPreferences(trackProfiles) {
 }
 
 // Build genre mapping from tracks
-async function buildGenreMapping(trackProfiles, artistName) {
+async function buildGenreMapping(trackProfiles, artistName, existingGenres = []) {
+  // PRIORITY 1: Use existing Spotify genres if available
+  if (existingGenres && existingGenres.length > 0) {
+    console.log(`🎼 Using existing Spotify genres for ${artistName}: ${existingGenres.join(', ')}`);
+    return {
+      inferredGenres: existingGenres.slice(0, 5), // Use up to 5 existing genres as array
+      source: 'spotify',
+      confidence: 1.0
+    };
+  }
+  
+  // PRIORITY 2: Infer from audio features
   const genres = inferGenresFromTracks(trackProfiles, artistName);
   const genreProfile = calculateGenreSoundProfile(trackProfiles);
   
-  // Return comma-separated genre string (like the output shows "indie, alternative")
+  // Return object with inferredGenres array (as expected by frontend)
   if (genres && genres.length > 0) {
-    return genres.join(', ');
+    console.log(`🎼 Inferred genres from audio features for ${artistName}: ${genres.join(', ')}`);
+    return {
+      inferredGenres: genres,
+      source: 'audio_analysis',
+      confidence: 0.8
+    };
   }
   
-  // If no genres inferred from audio features, try artist name-based inference
+  // PRIORITY 3: If no genres inferred from audio features, try artist name-based inference
   const artistBasedGenres = inferGenreFromArtistName(artistName);
   if (artistBasedGenres && artistBasedGenres.length > 0) {
-    return artistBasedGenres.join(', ');
+    console.log(`🎼 Inferred genres from artist name for ${artistName}: ${artistBasedGenres.join(', ')}`);
+    return {
+      inferredGenres: artistBasedGenres,
+      source: 'name_inference',
+      confidence: 0.6
+    };
   }
   
-  return 'N/A';
+  console.log(`⚠️ No genres found for ${artistName}`);
+  return {
+    inferredGenres: [],
+    source: 'none',
+    confidence: 0.0
+  };
 }
 
 // Calculate recent sound evolution
