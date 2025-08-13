@@ -347,6 +347,7 @@ app.post('/api/analyze-artist', async (req, res) => {
     // ROUND 2 ANALYSIS (only if Round 1 had reasonable success)
     const round1SuccessRate = round1Success / round1Tracks.length;
     let round2Success = 0;
+    let round2Tracks = []; // Initialize empty array
     
     if (round1SuccessRate >= 0.4 && maxTracks > 10) { // At least 40% success rate and maxTracks allows more
       console.log(`🔄 Round 1 success rate: ${(round1SuccessRate * 100).toFixed(1)}% - Starting Round 2`);
@@ -354,7 +355,7 @@ app.post('/api/analyze-artist', async (req, res) => {
       // Round 2: Next 10 tracks (5 more top + 5 more recent)
       const round2TopTracks = topTracks.slice(5, 10); // Next 5 top tracks
       const round2RecentTracks = recentTracks.slice(5, 10); // Next 5 recent tracks
-      const round2Tracks = [...round2TopTracks, ...round2RecentTracks];
+      round2Tracks = [...round2TopTracks, ...round2RecentTracks];
       
       console.log(`🔄 Round 2: Analyzing ${round2Tracks.length} more tracks (${round2TopTracks.length} top + ${round2RecentTracks.length} recent)`);
       
@@ -414,7 +415,7 @@ app.post('/api/analyze-artist', async (req, res) => {
     }
 
     const totalSuccess = round1Success + round2Success;
-    const totalAttempted = round1Tracks.length + (round2Success > 0 ? round2Tracks.length : 0);
+    const totalAttempted = round1Tracks.length + round2Tracks.length;
     
     console.log(`🎯 Final Analysis Results:`);
     console.log(`   Total tracks analyzed: ${totalSuccess}/${totalAttempted}`);
