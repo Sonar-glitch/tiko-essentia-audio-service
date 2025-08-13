@@ -2,7 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const { MongoClient } = require('mongodb');
 const fetch = require('node-fetch');
-const { findAlternativeAudioSource, inferAudioFeaturesFromGenres } = require('./enhanced-audio-sources');
+const { findAlternativeAudioSource, inferAudioFeaturesFromGenres, searchSpotifyPreviewUrl } = require('./enhanced-audio-sources');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -334,24 +334,49 @@ app.post('/api/analyze-artist', async (req, res) => {
           if (previewUrl) audioSource = 'apple_broad';
         }
         
-        // If still no preview, try alternative sources
+        // If still no preview, try enhanced alternative sources with Spotify credentials
         if (!previewUrl) {
-          console.log(`🔍 Trying alternative sources for: ${track.name}`);
+          console.log(`🔍 Trying enhanced alternative sources for: ${track.name}`);
+          
+          // Pass Spotify credentials for enhanced search
+          const spotifyCredentials = {
+            clientId: process.env.SPOTIFY_CLIENT_ID,
+            clientSecret: process.env.SPOTIFY_CLIENT_SECRET
+          };
+          
           const alternativeResult = await findAlternativeAudioSource(
             track.artists[0]?.name,
             track.name,
-            track
+            track,
+            spotifyCredentials
           );
           
-          if (alternativeResult.bestSource && alternativeResult.bestSource.streamUrl) {
-            previewUrl = alternativeResult.bestSource.streamUrl;
-            audioSource = alternativeResult.bestSource.source;
-            alternativeSourceInfo = {
-              source: alternativeResult.bestSource.source,
-              confidence: alternativeResult.bestSource.confidence,
-              totalSources: alternativeResult.totalSources
-            };
-            console.log(`✅ Using ${audioSource} source (confidence: ${alternativeResult.bestSource.confidence})`);
+          if (alternativeResult.bestSource) {
+            const bestSource = alternativeResult.bestSource;
+            
+            // Try different URL types
+            previewUrl = bestSource.previewUrl || bestSource.streamUrl || bestSource.url;
+            
+            if (previewUrl && (bestSource.previewUrl || bestSource.streamUrl)) {
+              audioSource = bestSource.source;
+              alternativeSourceInfo = {
+                source: bestSource.source,
+                confidence: bestSource.confidence || bestSource.priorityScore,
+                totalSources: alternativeResult.totalSources,
+                hasDirectStream: alternativeResult.hasDirectStream,
+                recommendedAction: alternativeResult.recommendedAction,
+                searchTime: alternativeResult.searchTime
+              };
+              console.log(`✅ Using ${audioSource} source (priority: ${bestSource.priorityScore?.toFixed(2)}, action: ${alternativeResult.recommendedAction})`);
+            } else {
+              console.log(`⚠️ Best source (${bestSource.source}) requires extraction - skipping for now`);
+              alternativeSourceInfo = {
+                skippedSource: bestSource.source,
+                reason: 'requires_extraction',
+                note: bestSource.note,
+                recommendedAction: alternativeResult.recommendedAction
+              };
+            }
           }
         }
         
@@ -433,24 +458,49 @@ app.post('/api/analyze-artist', async (req, res) => {
             if (previewUrl) audioSource = 'apple_broad';
           }
           
-          // If still no preview, try alternative sources
+          // If still no preview, try enhanced alternative sources with Spotify credentials
           if (!previewUrl) {
-            console.log(`🔍 Trying alternative sources for: ${track.name}`);
+            console.log(`🔍 Trying enhanced alternative sources for: ${track.name}`);
+            
+            // Pass Spotify credentials for enhanced search
+            const spotifyCredentials = {
+              clientId: process.env.SPOTIFY_CLIENT_ID,
+              clientSecret: process.env.SPOTIFY_CLIENT_SECRET
+            };
+            
             const alternativeResult = await findAlternativeAudioSource(
               track.artists[0]?.name,
               track.name,
-              track
+              track,
+              spotifyCredentials
             );
             
-            if (alternativeResult.bestSource && alternativeResult.bestSource.streamUrl) {
-              previewUrl = alternativeResult.bestSource.streamUrl;
-              audioSource = alternativeResult.bestSource.source;
-              alternativeSourceInfo = {
-                source: alternativeResult.bestSource.source,
-                confidence: alternativeResult.bestSource.confidence,
-                totalSources: alternativeResult.totalSources
-              };
-              console.log(`✅ Using ${audioSource} source (confidence: ${alternativeResult.bestSource.confidence})`);
+            if (alternativeResult.bestSource) {
+              const bestSource = alternativeResult.bestSource;
+              
+              // Try different URL types
+              previewUrl = bestSource.previewUrl || bestSource.streamUrl || bestSource.url;
+              
+              if (previewUrl && (bestSource.previewUrl || bestSource.streamUrl)) {
+                audioSource = bestSource.source;
+                alternativeSourceInfo = {
+                  source: bestSource.source,
+                  confidence: bestSource.confidence || bestSource.priorityScore,
+                  totalSources: alternativeResult.totalSources,
+                  hasDirectStream: alternativeResult.hasDirectStream,
+                  recommendedAction: alternativeResult.recommendedAction,
+                  searchTime: alternativeResult.searchTime
+                };
+                console.log(`✅ Using ${audioSource} source (priority: ${bestSource.priorityScore?.toFixed(2)}, action: ${alternativeResult.recommendedAction})`);
+              } else {
+                console.log(`⚠️ Best source (${bestSource.source}) requires extraction - skipping for now`);
+                alternativeSourceInfo = {
+                  skippedSource: bestSource.source,
+                  reason: 'requires_extraction',
+                  note: bestSource.note,
+                  recommendedAction: alternativeResult.recommendedAction
+                };
+              }
             }
           }
           
@@ -533,7 +583,7 @@ app.post('/api/analyze-artist', async (req, res) => {
         console.log(`✅ Partial success: No audio analysis but genres available for ${artistName}`);
         
         // Generate metadata-based features from genres
-        const metadataFeatures = inferAudioFeaturesFromGenres(genreMapping.inferredGenres, artistName);
+        const metadataFeatures = inferAudioFeaturesFromGenres(genreMapping.inferredGenres, artistName, 'mixed_tracks');
         
         return res.json({
           success: true,
@@ -1075,7 +1125,6 @@ function calculateGenreSoundProfile(trackProfiles) {
   };
 }
 
-// Infer audio features from genres when no audio analysis is possible
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`🎵 Essentia Audio Service running on port ${PORT}`);
   console.log(`🔗 Health check: http://localhost:${PORT}/health`);
