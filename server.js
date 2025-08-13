@@ -609,11 +609,23 @@ app.post('/api/analyze-artist', async (req, res) => {
         });
       } else {
         // Complete failure - no tracks and no genres
+        // Build detailed failure report
+        const failureDetails = {
+          spotifySearch: spotifyToken ? 'attempted' : 'no_credentials',
+          appleSearch: 'attempted',
+          alternativeSourcesAttempted: totalAttempted > 0,
+          tracksFound: totalAttempted,
+          tracksWithPreviewUrls: 0,
+          genresAvailable: existingGenres.length,
+          spotifyId: spotifyId ? 'available' : 'missing'
+        };
+        
         return res.json({
           success: false,
           error: 'No tracks could be analyzed with Essentia and no existing genres available',
+          detailedError: `Failed to find analyzable audio for ${artistName}. Sources attempted: ${spotifyToken ? 'Spotify' : 'No Spotify credentials'}, Apple iTunes ${totalAttempted > 0 ? '(found ' + totalAttempted + ' tracks but no preview URLs)' : '(no tracks found)'}, Enhanced alternatives (SoundCloud/YouTube/Beatport). ${existingGenres.length > 0 ? 'Had ' + existingGenres.length + ' genres but insufficient for inference.' : 'No genre data available for fallback inference.'}`,
           artistName,
-          tracksAttempted: totalAttempted
+          failureAnalysis: failureDetails
         });
       }
     }

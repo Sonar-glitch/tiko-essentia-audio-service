@@ -169,7 +169,19 @@ async function searchSoundCloudAudio(artistName, trackName) {
         });
         
         if (!response.ok) {
-          console.log(`❌ SoundCloud API error with client ${clientId}: ${response.status}`);
+          const errorDetails = {
+            status: response.status,
+            statusText: response.statusText,
+            clientId: clientId.substring(0, 8) + '...' // Partial ID for debugging
+          };
+          
+          if (response.status === 403) {
+            console.log(`❌ SoundCloud API error with client ${clientId.substring(0, 8)}...: 403 Forbidden (likely suspended/invalid key)`);
+          } else if (response.status === 401) {
+            console.log(`❌ SoundCloud API error with client ${clientId.substring(0, 8)}...: 401 Unauthorized (expired/wrong format)`);
+          } else {
+            console.log(`❌ SoundCloud API error with client ${clientId.substring(0, 8)}...: ${response.status} ${response.statusText}`);
+          }
           continue;
         }
         
