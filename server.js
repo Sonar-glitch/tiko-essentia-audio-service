@@ -161,7 +161,13 @@ app.post('/api/analyze-artist', async (req, res) => {
   const startTime = Date.now();
   
   try {
-    const { artistName, spotifyId, maxTracks = 20, includeRecentReleases = true } = req.body;
+    const { 
+      artistName, 
+      spotifyId, 
+      maxTracks = 20, 
+      includeRecentReleases = true,
+      spotifyCredentials // New: Accept Spotify credentials from frontend
+    } = req.body;
     
     if (!artistName) {
       return res.status(400).json({ error: 'artistName is required' });
@@ -170,16 +176,23 @@ app.post('/api/analyze-artist', async (req, res) => {
     console.log(`🎤 Analyzing artist: ${artistName}`);
     console.log(`📊 Max tracks: ${maxTracks}, Recent releases: ${includeRecentReleases}`);
     
-    // Get Spotify access token
-    const spotifyToken = await getSpotifyToken();
-    if (!spotifyToken) {
-      return res.status(500).json({ error: 'Failed to get Spotify access token' });
+    // Get Spotify access token (use provided credentials or environment variables)
+    let spotifyToken;
+    if (spotifyCredentials && spotifyCredentials.accessToken) {
+      spotifyToken = spotifyCredentials.accessToken;
+      console.log('🔑 Using frontend-provided Spotify credentials');
+    } else {
+      spotifyToken = await getSpotifyToken();
+      if (!spotifyToken) {
+        console.warn('⚠️ No Spotify credentials available - limited functionality');
+        // Continue without Spotify (Apple-only mode)
+      }
     }
 
     let tracks = [];
 
-    // Method 1: Get top tracks using artist ID (if provided)
-    if (spotifyId) {
+    // Method 1: Get top tracks using artist ID (if provided and we have Spotify token)
+    if (spotifyId && spotifyToken) {
       console.log(`🔍 Fetching top tracks for Spotify ID: ${spotifyId}`);
       
       try {
@@ -241,8 +254,8 @@ app.post('/api/analyze-artist', async (req, res) => {
       }
     }
 
-    // Fallback: Search for artist if no tracks found
-    if (tracks.length === 0) {
+    // Fallback: Search for artist if no tracks found and we have Spotify token
+    if (tracks.length === 0 && spotifyToken) {
       console.log(`🔍 Fallback: Searching for tracks by artist name`);
       
       try {
@@ -258,6 +271,12 @@ app.post('/api/analyze-artist', async (req, res) => {
       } catch (error) {
         console.warn(`⚠️ Search fallback failed: ${error.message}`);
       }
+    }
+    
+    // Apple-only fallback if no Spotify access
+    if (tracks.length === 0 && !spotifyToken) {
+      console.log(`🍎 Using Apple-only mode (no Spotify credentials)`);
+      tracks = await findAppleTracksForArtist(artistName, 20);
     }
 
     if (tracks.length === 0) {
@@ -298,10 +317,14 @@ app.post('/api/analyze-artist', async (req, res) => {
       try {
         console.log(`   [R1] Track ${i+1}/${round1Tracks.length}: ${track.name}${track.isRecentRelease ? ' (recent)' : ' (top)'}...`);
         
-        // Get preview URL (Spotify first, Apple fallback)
+        // Get preview URL (Spotify first, Apple fallback, extended Apple search)
         let previewUrl = track.preview_url;
         if (!previewUrl) {
           previewUrl = await findApplePreviewUrl(track.artists[0].name, track.name);
+        }
+        // If still no preview, try broader Apple search
+        if (!previewUrl) {
+          previewUrl = await findApplePreviewUrlBroader(track.artists[0].name, track.name);
         }
         
         if (previewUrl) {
@@ -365,10 +388,14 @@ app.post('/api/analyze-artist', async (req, res) => {
         try {
           console.log(`   [R2] Track ${i+1}/${round2Tracks.length}: ${track.name}${track.isRecentRelease ? ' (recent)' : ' (top)'}...`);
           
-          // Get preview URL (Spotify first, Apple fallback)
+          // Get preview URL (Spotify first, Apple fallback, extended Apple search)
           let previewUrl = track.preview_url;
           if (!previewUrl) {
             previewUrl = await findApplePreviewUrl(track.artists[0].name, track.name);
+          }
+          // If still no preview, try broader Apple search
+          if (!previewUrl) {
+            previewUrl = await findApplePreviewUrlBroader(track.artists[0].name, track.name);
           }
           
           if (previewUrl) {
@@ -632,6 +659,51 @@ async function findApplePreviewUrl(artistName, trackName) {
   return null;
 }
 
+// Find Apple tracks for artist (when no Spotify access)
+async function findAppleTracksForArtist(artistName, limit = 20) {
+  try {
+    const response = await fetch(`https://itunes.apple.com/search?term=${encodeURIComponent(artistName)}&media=music&entity=song&limit=${limit}`);
+    
+    if (response.ok) {
+      const data = await response.json();
+      if (data.results && data.results.length > 0) {
+        return data.results.map(result => ({
+          id: result.trackId,
+          name: result.trackName,
+          artists: [{ name: result.artistName }],
+          album: { name: result.collectionName },
+          popularity: 50, // Default
+          preview_url: result.previewUrl,
+          external_urls: { itunes: result.trackViewUrl }
+        }));
+      }
+    }
+  } catch (error) {
+    console.warn(`⚠️ Apple artist search failed for ${artistName}:`, error.message);
+  }
+  return [];
+}
+
+// Broader Apple search (for difficult tracks)
+async function findApplePreviewUrlBroader(artistName, trackName) {
+  try {
+    // Try with just the artist name
+    const response = await fetch(`https://itunes.apple.com/search?term=${encodeURIComponent(artistName)}&media=music&entity=song&limit=10`);
+    
+    if (response.ok) {
+      const data = await response.json();
+      if (data.results && data.results.length > 0) {
+        // Return the first result's preview URL
+        const firstResult = data.results.find(result => result.previewUrl);
+        return firstResult ? firstResult.previewUrl : null;
+      }
+    }
+  } catch (error) {
+    console.warn(`⚠️ Broader Apple search failed for ${artistName}:`, error.message);
+  }
+  return null;
+}
+
 // Analyze audio with Essentia (placeholder - replace with actual Essentia.js calls)
 async function analyzeAudioWithEssentia(audioUrl) {
   // This is a placeholder - in production, you would use Essentia.js
@@ -709,11 +781,18 @@ async function buildGenreMapping(trackProfiles, artistName) {
   const genres = inferGenresFromTracks(trackProfiles, artistName);
   const genreProfile = calculateGenreSoundProfile(trackProfiles);
   
-  return {
-    inferredGenres: genres,
-    soundCharacteristics: genreProfile,
-    confidence: trackProfiles.length >= 10 ? 'high' : trackProfiles.length >= 5 ? 'medium' : 'low'
-  };
+  // Return comma-separated genre string (like the output shows "indie, alternative")
+  if (genres && genres.length > 0) {
+    return genres.join(', ');
+  }
+  
+  // If no genres inferred from audio features, try artist name-based inference
+  const artistBasedGenres = inferGenreFromArtistName(artistName);
+  if (artistBasedGenres && artistBasedGenres.length > 0) {
+    return artistBasedGenres.join(', ');
+  }
+  
+  return 'N/A';
 }
 
 // Calculate recent sound evolution
@@ -761,29 +840,101 @@ function calculateAverageFeatures(trackProfiles) {
 
 // Infer genres from track characteristics
 function inferGenresFromTracks(trackProfiles, artistName) {
+  if (!trackProfiles || trackProfiles.length === 0) return [];
+  
   const genres = [];
   const avgFeatures = calculateAverageFeatures(trackProfiles);
   
-  // Basic genre inference based on audio features
-  if (avgFeatures.energy > 0.8 && avgFeatures.tempo > 130) {
+  // Only proceed if we have meaningful features
+  if (!avgFeatures.energy && !avgFeatures.tempo && !avgFeatures.danceability) {
+    return [];
+  }
+  
+  // EDM/Electronic genre detection (prioritized)
+  if (avgFeatures.energy > 0.75 && avgFeatures.tempo > 125 && avgFeatures.danceability > 0.65) {
+    genres.push('edm', 'electronic', 'dance');
+  } else if (avgFeatures.energy > 0.7 && avgFeatures.tempo > 120) {
     genres.push('electronic', 'dance');
   }
   
-  if (avgFeatures.energy > 0.7 && avgFeatures.danceability > 0.7) {
+  // House/Techno
+  if (avgFeatures.tempo > 115 && avgFeatures.tempo < 135 && avgFeatures.danceability > 0.7) {
+    genres.push('house', 'techno');
+  }
+  
+  // Trance
+  if (avgFeatures.tempo > 130 && avgFeatures.energy > 0.8 && avgFeatures.valence > 0.6) {
+    genres.push('trance');
+  }
+  
+  // Dubstep/Bass
+  if (avgFeatures.energy > 0.8 && avgFeatures.tempo > 140) {
+    genres.push('dubstep', 'bass');
+  }
+  
+  // Pop/Dance-Pop
+  if (avgFeatures.energy > 0.6 && avgFeatures.danceability > 0.7 && avgFeatures.valence > 0.5) {
     genres.push('pop', 'dance-pop');
   }
   
-  if (avgFeatures.valence < 0.4 && avgFeatures.energy < 0.5) {
+  // Alternative/Indie
+  if (avgFeatures.valence < 0.4 && avgFeatures.energy < 0.6) {
     genres.push('indie', 'alternative');
   }
   
-  if (avgFeatures.tempo < 100 && avgFeatures.valence < 0.5) {
+  // Ambient/Downtempo
+  if (avgFeatures.tempo < 100 && avgFeatures.energy < 0.4) {
     genres.push('ambient', 'downtempo');
   }
   
-  // More sophisticated genre inference could be added here
+  // Hip-hop/Rap
+  if (avgFeatures.tempo > 80 && avgFeatures.tempo < 110 && avgFeatures.energy > 0.6) {
+    genres.push('hip-hop', 'rap');
+  }
   
   return [...new Set(genres)].slice(0, 3);
+}
+
+// Infer genre from artist name (fallback method)
+function inferGenreFromArtistName(artistName) {
+  const name = artistName.toLowerCase();
+  
+  // EDM artists (prioritized)
+  const edmArtists = ['deadmau5', 'skrillex', 'calvin harris', 'tiesto', 'david guetta', 'armin van buuren', 
+                      'martin garrix', 'diplo', 'zedd', 'marshmello', 'fisher', 'ferry corsten', 'dvbbs', 
+                      'rezz', 'porter robinson', 'richie hawtin', 'tiga', 'above & beyond', 'eric prydz',
+                      'deadmau5', 'swedish house mafia', 'axwell', 'steve angello', 'sebastian ingrosso'];
+  
+  if (edmArtists.some(artist => name.includes(artist))) {
+    return ['edm', 'electronic', 'dance'];
+  }
+  
+  // Rock/Metal
+  const rockArtists = ['metallica', 'iron maiden', 'black sabbath', 'suffocation', 'killswitch engage', 
+                       'parkway drive', 'beartooth', 'anvil'];
+  if (rockArtists.some(artist => name.includes(artist))) {
+    return ['rock', 'metal'];
+  }
+  
+  // Hip-hop
+  const hipHopArtists = ['wu-tang clan', 'run the jewels', 'big sean', 'russ'];
+  if (hipHopArtists.some(artist => name.includes(artist))) {
+    return ['hip-hop', 'rap'];
+  }
+  
+  // Pop
+  const popArtists = ['coldplay', 'shania twain', 'luke bryan', 'thomas rhett'];
+  if (popArtists.some(artist => name.includes(artist))) {
+    return ['pop'];
+  }
+  
+  // Alternative/Indie
+  const indieArtists = ['pup', 'jeff rosenstock', 'kurt vile', 'tripping daisy', 'mest'];
+  if (indieArtists.some(artist => name.includes(artist))) {
+    return ['indie', 'alternative'];
+  }
+  
+  return [];
 }
 
 // Calculate genre sound profile
