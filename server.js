@@ -225,10 +225,15 @@ app.post('/api/analyze-artist', async (req, res) => {
       previewRecoveryLimited: false
     };
     // Preview acquisition strategy (default now apple_primary)
-    const previewStrategy = (req.body.previewStrategy || 'apple_primary').toLowerCase();
-    acquisitionStats.previewStrategy = previewStrategy;
-    acquisitionStats.appleOverrideSpotify = 0;
-    acquisitionStats.spotifyRecoveryDisabled = false;
+  const previewStrategy = (req.body.previewStrategy || 'apple_primary').toLowerCase();
+  acquisitionStats.previewStrategy = previewStrategy;
+  acquisitionStats.appleOverrideSpotify = 0;
+  acquisitionStats.spotifyRecoveryDisabled = false;
+  // New: SoundCloud primary / forced test mode
+  const forceSoundCloudTest = previewStrategy === 'soundcloud_primary' || !!req.body.forceSoundCloudTest;
+  acquisitionStats.soundcloudPrimary = previewStrategy === 'soundcloud_primary';
+  acquisitionStats.forceSoundCloudTest = !!req.body.forceSoundCloudTest;
+  acquisitionStats.forceSkipApple = forceSoundCloudTest; // explicit flag to indicate Apple was intentionally skipped
 
     // Method 1: Get top tracks using artist ID (if provided and we have Spotify token)
   if (spotifyId && spotifyToken) {
@@ -398,9 +403,25 @@ app.post('/api/analyze-artist', async (req, res) => {
         return base.replace(/\s{2,}/g,' ').trim();
       }
       const useApplePrimary = previewStrategy === 'apple_primary';
+      const forceSoundCloudTest = previewStrategy === 'soundcloud_primary' || acquisitionStats.forceSoundCloudTest;
+
+      // (EARLY) Force SoundCloud path before any Apple/Spotify recovery when testing SC directly
+      if (!previewUrl && forceSoundCloudTest && process.env.SOUNDCLOUD_CLIENT_ID) {
+        try {
+          const scEarly = await searchSoundCloudAudio(track.artists[0]?.name, track.name);
+          if (scEarly && (scEarly.streamUrl || scEarly.previewUrl)) {
+            previewUrl = scEarly.streamUrl || scEarly.previewUrl;
+            audioSource = 'soundcloud';
+            alternativeSourceInfo = { source: 'soundcloud', confidence: scEarly.confidence || 0.85, forced: true };
+            acquisitionStats.soundcloudRescue++;
+          }
+        } catch (e) {
+          // ignore – continue to normal flow
+        }
+      }
 
       // APPLE PRIMARY STRATEGY: Attempt Apple sources before any Spotify recovery.
-      if (useApplePrimary) {
+  if (useApplePrimary && !forceSoundCloudTest) { // skip Apple entirely if forcing SC test
         // Even if Spotify preview exists, we prefer Apple for consistency; only fallback to Spotify if Apple not found.
         let hadSpotify = !!previewUrl;
         if (track.artists && track.artists[0] && track.name) {
@@ -513,7 +534,7 @@ app.post('/api/analyze-artist', async (req, res) => {
           // silent; recovery optional
         }
       }
-      if (useApplePrimary && !previewUrl) {
+  if (useApplePrimary && !forceSoundCloudTest && !previewUrl) {
         acquisitionStats.spotifyRecoveryDisabled = true; // recorded if we skipped the spotify recovery block
       }
       // (2) Apple exact (balanced strategy only)
