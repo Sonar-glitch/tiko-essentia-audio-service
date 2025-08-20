@@ -63,8 +63,8 @@ const dryRun = hasFlag('dry');
   }
 
   console.log(`Loaded ${artists.length} artists (limit=${limit}).`);
-
   let improved = 0; let skipped = 0; let scTriggered = 0; let errors = 0;
+  const results = [];
 
   for (const artist of artists) {
     const aName = artist.name; const spotifyId = artist.spotifyId; const existingGenres = artist.genres || [];
@@ -72,14 +72,28 @@ const dryRun = hasFlag('dry');
 
     // Quick existing coverage check: count track vectors for this artist in audio_features
     const existingVectors = await audioCol.countDocuments({ 'features.analysis_source': 'essentia', artist: aName });
-    if (existingVectors >= maxTracks) { process.stdout.write(`skip (already ${existingVectors} vectors)\n`); skipped++; continue; }
+    if (existingVectors >= maxTracks) {
+      process.stdout.write(`skip (already ${existingVectors} vectors)\n`);
+      skipped++;
+      results.push({ name: aName, status: 'skip', existingVectors });
+      continue;
+    }
 
-    if (dryRun) { process.stdout.write('dry-run skip\n'); skipped++; continue; }
+    if (dryRun) {
+      process.stdout.write('dry-run skip\n');
+      skipped++;
+      results.push({ name: aName, status: 'dry-skip', existingVectors });
+      continue;
+    }
 
     try {
+      const entry = { name: aName, status: 'processing', existingVectors, passes: [] };
       if (!soundcloudOnly && appleFirst) {
         const appleResp = await callAnalyze(aName, spotifyId, existingGenres, 'apple_primary');
         reportResult('apple', appleResp);
+        const analyzed = appleResp.metadata?.totalTracksAnalyzed || 0;
+        const sources = appleResp.metadata?.audioSources || {};
+        entry.passes.push({ strategy: 'apple', analyzed, sources, acquisitionStats: appleResp.acquisitionStats || null });
       }
       if ((soundcloudPass || soundcloudOnly)) {
         // Only run SC pass if still under target coverage
@@ -89,18 +103,36 @@ const dryRun = hasFlag('dry');
           scTriggered++;
           const scResp = await callAnalyze(aName, spotifyId, existingGenres, 'soundcloud_primary', { forceSoundCloudTest: true });
           reportResult('soundcloud', scResp);
+          const analyzed = scResp.metadata?.totalTracksAnalyzed || 0;
+          const sources = scResp.metadata?.audioSources || {};
+          entry.passes.push({ strategy: 'soundcloud', analyzed, sources, acquisitionStats: scResp.acquisitionStats || null });
         } else {
           process.stdout.write(' SC-pass-skip (coverage ok)');
         }
       }
       improved++;
+      entry.status = 'done';
+      results.push(entry);
     } catch (e) {
       errors++; console.error(`\n   ❌ Error processing ${aName}:`, e.message);
+      results.push({ name: aName, status: 'error', message: e.message });
     }
   }
 
   console.log('\n\n===== SUMMARY =====');
   console.log({ total: artists.length, improved, skipped, scTriggered, errors });
+  try {
+    const payload = { total: artists.length, improved, skipped, scTriggered, errors, results };
+    // Always print JSON to stdout so Heroku one-off runs can capture it even if /tmp write fails
+    console.log('===BATCH_COVERAGE_JSON_START===');
+    console.log(JSON.stringify(payload, null, 2));
+    console.log('===BATCH_COVERAGE_JSON_END===');
+    const outPath = '/tmp/batch_coverage_results.json';
+    fs.writeFileSync(outPath, JSON.stringify(payload, null, 2));
+    console.log('Wrote results to', outPath);
+  } catch (werr) {
+    console.error('Failed to write /tmp results:', werr.message);
+  }
   await client.close();
 })();
 
