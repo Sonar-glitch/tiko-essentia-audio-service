@@ -1,0 +1,8 @@
+# Ignore environment and local artifacts
+.env
+.env.local
+node_modules/
+logs/
+*.log
+dist/
+.DS_Store

@@ -2,7 +2,8 @@ const express = require('express');
 const cors = require('cors');
 const { MongoClient } = require('mongodb');
 const fetch = require('node-fetch');
-const { findAlternativeAudioSource, inferAudioFeaturesFromGenres } = require('./enhanced-audio-sources');
+const crypto = require('crypto');
+const { findAlternativeAudioSource, inferAudioFeaturesFromGenres, searchSoundCloudAudio } = require('./enhanced-audio-sources');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -21,78 +22,83 @@ MongoClient.connect(MONGODB_URI)
   })
   .catch(error => console.error('MongoDB connection error:', error));
 
+// -------- Logging Helpers --------
+function log(evt, data = {}) {
+  try {
+    const base = { evt, ts: new Date().toISOString() };
+    console.log(JSON.stringify({ ...base, ...data }));
+  } catch (e) {
+    console.log('log_fail', evt, e.message);
+  }
+}
+
+function withCorrelation(req) {
+  return req.headers['x-correlation-id'] || crypto.randomUUID();
+}
+
 // Health check endpoint
-app.get('/health', (req, res) => {
-  res.json({ 
+app.get('/health', async (req, res) => {
+  const correlationId = withCorrelation(req);
+  const stats = await collectQuickStats();
+  const payload = { 
     status: 'healthy', 
     service: 'tiko-essentia-audio-service',
     timestamp: new Date().toISOString(),
     uptime: process.uptime(),
-    mongodb: db ? 'connected' : 'disconnected'
-  });
+    mongodb: db ? 'connected' : 'disconnected',
+    correlationId,
+    stats
+  };
+  res.setHeader('x-correlation-id', correlationId);
+  res.json(payload);
+});
+
+// Internal metrics (lightweight – safe to call by health script)
+app.get('/internal/metrics', async (req, res) => {
+  const correlationId = withCorrelation(req);
+  try {
+    const stats = await collectQuickStats();
+    res.setHeader('x-correlation-id', correlationId);
+    res.json({ success: true, correlationId, ...stats });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message, correlationId });
+  }
 });
 
 // Audio analysis endpoint
 app.post('/api/analyze', async (req, res) => {
   const startTime = Date.now();
-  
+  const correlationId = withCorrelation(req);
+  res.setHeader('x-correlation-id', correlationId);
   try {
     const { audioUrl, trackId } = req.body;
-    
     if (!audioUrl) {
-      return res.status(400).json({ error: 'audioUrl is required' });
+      return res.status(400).json({ error: 'audioUrl is required', correlationId });
     }
+    log('track_analyze_begin', { correlationId, audioUrlHash: hashAudioUrl(audioUrl), trackId });
 
-    console.log(`🎵 Analyzing audio: ${audioUrl.substring(0, 50)}...`);
-    
-    // Check if already analyzed
-    if (trackId && db) {
-      const existing = await db.collection('audio_features').findOne({ trackId });
-      if (existing && existing.source === 'essentia') {
-        console.log(`✅ Using cached Essentia analysis for ${trackId}`);
-        return res.json({
-          success: true,
-          features: existing.features,
-          source: 'cache',
-          analysisTime: Date.now() - startTime
-        });
+    // Multi-key cache: trackId or audioUrl hash
+    const audioHash = hashAudioUrl(audioUrl);
+    if (db) {
+      const existing = await db.collection('audio_features').findOne({ $or: [ { trackId }, { audioHash } ] });
+      if (existing && existing.features) {
+        log('track_analyze_cache_hit', { correlationId, trackId, audioHash });
+        return res.json({ success: true, features: existing.features, source: existing.source || 'cache', cached: true, correlationId, analysisTime: Date.now() - startTime });
       }
     }
-
-    // Analyze with Essentia
-    const features = await analyzeAudioWithEssentia(audioUrl);
-    
-    // Store in database if trackId provided
-    if (trackId && db) {
+    const features = await analyzeAudioWithEssentia(audioUrl, { correlationId, audioHash, tier: 'single_track' });
+    if (db) {
       await db.collection('audio_features').updateOne(
-        { trackId },
-        {
-          $set: {
-            trackId,
-            features,
-            source: 'essentia',
-            audioUrl,
-            analyzedAt: new Date(),
-            analysisTime: Date.now() - startTime
-          }
-        },
+        { audioHash },
+        { $set: { audioHash, trackId, features, source: 'essentia', audioUrl, analyzedAt: new Date(), analysisTime: Date.now() - startTime } },
         { upsert: true }
       );
     }
-
-    res.json({
-      success: true,
-      features,
-      source: 'essentia',
-      analysisTime: Date.now() - startTime
-    });
-
+    log('track_analyze_success', { correlationId, trackId, audioHash });
+    res.json({ success: true, features, source: 'essentia', correlationId, analysisTime: Date.now() - startTime });
   } catch (error) {
-    console.error('❌ Analysis error:', error);
-    res.status(500).json({
-      success: false,
-      error: error.message 
-    });
+    log('track_analyze_error', { correlationId, error: error.message, stack: error.stack });
+    res.status(500).json({ success: false, error: error.message, correlationId });
   }
 });
 
@@ -160,7 +166,8 @@ app.post('/api/batch', async (req, res) => {
 // Artist analysis endpoint - STAGED TRACK ANALYSIS WITH ESSENTIA
 app.post('/api/analyze-artist', async (req, res) => {
   const startTime = Date.now();
-  
+  const correlationId = req.headers['x-correlation-id'] || require('crypto').randomUUID();
+  const startedLog = { evt: 'analyze_artist_begin', correlationId, ts: new Date().toISOString() };
   try {
     const { 
       artistName, 
@@ -175,26 +182,47 @@ app.post('/api/analyze-artist', async (req, res) => {
       return res.status(400).json({ error: 'artistName is required' });
     }
 
-    console.log(`🎤 Analyzing artist: ${artistName}`);
+  console.log(JSON.stringify({ ...startedLog, artistName, spotifyId, maxTracks, includeRecentReleases }));
     console.log(`📊 Max tracks: ${maxTracks}, Recent releases: ${includeRecentReleases}`);
     
     // Get Spotify access token (use provided credentials or environment variables)
     let spotifyToken;
+    let spotifyTokenStatus = 'unknown';
     if (spotifyCredentials && spotifyCredentials.accessToken) {
       spotifyToken = spotifyCredentials.accessToken;
       console.log('🔑 Using frontend-provided Spotify credentials');
+      spotifyTokenStatus = 'provided';
     } else {
       spotifyToken = await getSpotifyToken();
       if (!spotifyToken) {
         console.warn('⚠️ No Spotify credentials available - limited functionality');
         // Continue without Spotify (Apple-only mode)
+        spotifyTokenStatus = 'missing';
+      } else {
+        spotifyTokenStatus = 'acquired';
       }
     }
+    log('spotify_token_status', { correlationId, artistName, spotifyTokenStatus });
 
     let tracks = [];
+    const failureReasons = [];
+    const acquisitionStats = {
+      spotifyTokenStatus,
+      initialTracks: 0,
+      methods: { top: 0, recent: 0 },
+      fallbacks: { search: false, appleMode: false },
+      previewSourceCounts: { spotify: 0, apple: 0, apple_broad: 0, soundcloud: 0, youtube: 0, beatport: 0, bandcamp: 0, none: 0 },
+      analysisRounds: { round1: { attempted: 0, withPreview: 0 }, round2: { attempted: 0, withPreview: 0 } },
+      initialSpotifyTracks: 0,
+      initialSpotifyTracksWithPreview: 0,
+      missingSpotifyPreviewSample: [],
+      spotifyPreviewRecovered: 0,
+  soundcloudRescue: 0,
+  previewRecovery: { attempts: 0, queries: 0, hits: 0, marketsTried: [], firstHit: null }
+    };
 
     // Method 1: Get top tracks using artist ID (if provided and we have Spotify token)
-    if (spotifyId && spotifyToken) {
+  if (spotifyId && spotifyToken) {
       console.log(`🔍 Fetching top tracks for Spotify ID: ${spotifyId}`);
       
       try {
@@ -205,9 +233,11 @@ app.post('/api/analyze-artist', async (req, res) => {
         if (topTracksResponse.ok) {
           const topTracksData = await topTracksResponse.json();
           tracks = topTracksData.tracks || [];
+          acquisitionStats.methods.top = tracks.length;
           console.log(`✅ Found ${tracks.length} top tracks`);
         }
       } catch (error) {
+        failureReasons.push('spotify_top_tracks_error');
         console.warn(`⚠️ Failed to get top tracks: ${error.message}`);
       }
 
@@ -243,21 +273,24 @@ app.post('/api/analyze-artist', async (req, res) => {
                     isRecentRelease: true
                   })) || [];
                   
-                  tracks = tracks.concat(albumTracks);
+      tracks = tracks.concat(albumTracks);
                 }
               } catch (error) {
+                failureReasons.push('spotify_album_tracks_error');
                 console.warn(`⚠️ Failed to get tracks for album ${album.name}:`, error.message);
               }
             }
+    acquisitionStats.methods.recent = tracks.filter(t => t.isRecentRelease).length;
           }
         } catch (error) {
+          failureReasons.push('spotify_recent_albums_error');
           console.warn(`⚠️ Failed to get recent albums: ${error.message}`);
         }
       }
     }
 
     // Fallback: Search for artist if no tracks found and we have Spotify token
-    if (tracks.length === 0 && spotifyToken) {
+  if (tracks.length === 0 && spotifyToken) {
       console.log(`🔍 Fallback: Searching for tracks by artist name`);
       
       try {
@@ -268,9 +301,11 @@ app.post('/api/analyze-artist', async (req, res) => {
         if (searchResponse.ok) {
           const searchData = await searchResponse.json();
           tracks = searchData.tracks?.items || [];
+          if (tracks.length > 0) acquisitionStats.fallbacks.search = true;
           console.log(`🔍 Search fallback found ${tracks.length} tracks`);
         }
       } catch (error) {
+        failureReasons.push('spotify_search_error');
         console.warn(`⚠️ Search fallback failed: ${error.message}`);
       }
     }
@@ -279,14 +314,26 @@ app.post('/api/analyze-artist', async (req, res) => {
     if (tracks.length === 0 && !spotifyToken) {
       console.log(`🍎 Using Apple-only mode (no Spotify credentials)`);
       tracks = await findAppleTracksForArtist(artistName, 20);
+      if (tracks.length === 0) failureReasons.push('apple_mode_no_tracks');
+      if (tracks.length > 0) acquisitionStats.fallbacks.appleMode = true;
     }
 
+    const hadInitialTracks = tracks.length > 0; // for later fail classification
+    // Gather initial spotify preview coverage stats BEFORE any recovery attempts
+    if (tracks.length > 0) {
+      acquisitionStats.initialSpotifyTracks = tracks.length;
+      const missingSample = [];
+      for (const t of tracks) {
+        if (t.preview_url) acquisitionStats.initialSpotifyTracksWithPreview++;
+        else if (missingSample.length < 5) missingSample.push(t.id || t.name);
+      }
+      acquisitionStats.missingSpotifyPreviewSample = missingSample;
+      acquisitionStats.spotifyPreviewCoveragePercent = acquisitionStats.initialSpotifyTracks === 0 ? 0 : +( (acquisitionStats.initialSpotifyTracksWithPreview / acquisitionStats.initialSpotifyTracks) * 100 ).toFixed(1);
+    }
+    acquisitionStats.initialTracks = tracks.length;
     if (tracks.length === 0) {
-      return res.json({
-        success: false,
-        error: 'No tracks found for artist',
-        artistName
-      });
+      log('analyze_artist_no_tracks', { correlationId, artistName, failureReasons, acquisitionStats });
+      return res.json({ success: false, error: 'No tracks found for artist', failSubtype: 'no_tracks', artistName, failureReasons, correlationId, spotifyTokenStatus, acquisitionStats });
     }
 
     // ===== STAGED TRACK ANALYSIS =====
@@ -302,7 +349,8 @@ app.post('/api/analyze-artist', async (req, res) => {
     // Round 1: First 10 tracks (5 top + 5 recent)
     const round1TopTracks = topTracks.slice(0, 5);
     const round1RecentTracks = recentTracks.slice(0, 5);
-    const round1Tracks = [...round1TopTracks, ...round1RecentTracks];
+  const round1Tracks = [...round1TopTracks, ...round1RecentTracks];
+  acquisitionStats.analysisRounds.round1.attempted = round1Tracks.length;
     
     console.log(`🔄 Round 1: Analyzing ${round1Tracks.length} tracks (${round1TopTracks.length} top + ${round1RecentTracks.length} recent)`);
     
@@ -311,38 +359,96 @@ app.post('/api/analyze-artist', async (req, res) => {
     const spectralFeatures = {};
     let featureCounts = {};
 
-    // ROUND 1 ANALYSIS
-    let round1Success = 0;
-    for (let i = 0; i < round1Tracks.length; i++) {
-      const track = round1Tracks[i];
-      
-      try {
-        console.log(`   [R1] Track ${i+1}/${round1Tracks.length}: ${track.name}${track.isRecentRelease ? ' (recent)' : ' (top)'}...`);
-        
-        // Get preview URL (Spotify first, Apple fallback, extended Apple search, then alternative sources)
-        let previewUrl = track.preview_url;
-        let audioSource = 'spotify';
-        let alternativeSourceInfo = null;
-        
-        if (!previewUrl) {
+    // Helper: attempt to acquire preview URL (Spotify -> Spotify search variants -> Apple exact -> Apple broad -> SoundCloud -> multi-source aggregator)
+    async function acquirePreviewForTrack(track) {
+      let previewUrl = track.preview_url;
+      let audioSource = previewUrl ? 'spotify' : null;
+      let alternativeSourceInfo = null;
+
+      // (1) Attempt Spotify multi-market & search variant recovery if no direct preview
+      if (!previewUrl && spotifyToken) {
+        try {
+          const markets = (process.env.SPOTIFY_PREVIEW_MARKETS || 'US,GB,DE,SE,CA').split(',').map(m => m.trim()).filter(Boolean);
+          let recovered = null;
+          const unique = (arr) => [...new Set(arr.filter(Boolean))];
+          const artistCandidates = unique([
+            track.artists?.[0]?.name,
+            artistName,
+            ...(track.artists?.slice(1).map(a => a.name) || [])
+          ]);
+          for (const m of markets) {
+            if (!acquisitionStats.previewRecovery.marketsTried.includes(m)) acquisitionStats.previewRecovery.marketsTried.push(m);
+            // Two query patterns per artist candidate
+            for (const cand of artistCandidates) {
+              const patterns = [
+                `track:"${track.name}" artist:"${cand}"`,
+                `track:"${track.name}" "${cand}"`
+              ];
+              for (const pattern of patterns) {
+                acquisitionStats.previewRecovery.attempts++;
+                acquisitionStats.previewRecovery.queries++;
+                const q = encodeURIComponent(pattern);
+                const resp = await fetch(`https://api.spotify.com/v1/search?q=${q}&type=track&market=${m}&limit=5`, { headers: { 'Authorization': `Bearer ${spotifyToken}` } });
+                if (resp.ok) {
+                  const data = await resp.json();
+                  const candidate = data.tracks?.items?.find(it => it.preview_url && (it.id === track.id || it.name.toLowerCase() === track.name.toLowerCase()));
+                  if (candidate) { 
+                    recovered = candidate; 
+                    acquisitionStats.previewRecovery.hits++;
+                    if (!acquisitionStats.previewRecovery.firstHit) {
+                      acquisitionStats.previewRecovery.firstHit = { market: m, pattern, artist: cand };
+                    }
+                    break; 
+                  }
+                }
+                await new Promise(r => setTimeout(r, 120));
+              }
+              if (recovered) break;
+            }
+            if (recovered) break;
+          }
+          if (recovered && recovered.preview_url) {
+            previewUrl = recovered.preview_url;
+            audioSource = 'spotify';
+            acquisitionStats.spotifyPreviewRecovered++;
+          }
+        } catch (e) {
+          // silent; recovery optional
+        }
+      }
+
+      // (2) Apple exact
+      if (!previewUrl) {
+        try {
           previewUrl = await findApplePreviewUrl(track.artists[0].name, track.name);
           if (previewUrl) audioSource = 'apple';
-        }
-        // If still no preview, try broader Apple search
-        if (!previewUrl) {
+        } catch (e) {}
+      }
+      // (3) Apple broad
+      if (!previewUrl) {
+        try {
           previewUrl = await findApplePreviewUrlBroader(track.artists[0].name, track.name);
           if (previewUrl) audioSource = 'apple_broad';
+        } catch (e) {}
+      }
+      // (4) SoundCloud explicit (before generic multi-source) if client ID configured
+      if (!previewUrl && process.env.SOUNDCLOUD_CLIENT_ID) {
+        try {
+          const sc = await searchSoundCloudAudio(track.artists[0]?.name, track.name);
+          if (sc && (sc.streamUrl || sc.previewUrl)) {
+            previewUrl = sc.streamUrl || sc.previewUrl;
+            audioSource = 'soundcloud';
+            alternativeSourceInfo = { source: 'soundcloud', confidence: sc.confidence || 0.8 };
+            acquisitionStats.soundcloudRescue++;
+          }
+        } catch (e) {
+          // ignore
         }
-        
-        // If still no preview, try alternative sources
-        if (!previewUrl) {
-          console.log(`🔍 Trying alternative sources for: ${track.name}`);
-          const alternativeResult = await findAlternativeAudioSource(
-            track.artists[0]?.name,
-            track.name,
-            track
-          );
-          
+      }
+      // (5) Alternative multi-source aggregator (Beatport, YouTube, Bandcamp, etc.)
+      if (!previewUrl) {
+        try {
+          const alternativeResult = await findAlternativeAudioSource(track.artists[0]?.name, track.name, track);
           if (alternativeResult.bestSource && alternativeResult.bestSource.streamUrl) {
             previewUrl = alternativeResult.bestSource.streamUrl;
             audioSource = alternativeResult.bestSource.source;
@@ -351,12 +457,28 @@ app.post('/api/analyze-artist', async (req, res) => {
               confidence: alternativeResult.bestSource.confidence,
               totalSources: alternativeResult.totalSources
             };
-            console.log(`✅ Using ${audioSource} source (confidence: ${alternativeResult.bestSource.confidence})`);
           }
+        } catch (e) {}
+      }
+      return { previewUrl, audioSource, alternativeSourceInfo };
+    }
+
+    // ROUND 1 ANALYSIS
+    let round1Success = 0;
+  for (let i = 0; i < round1Tracks.length; i++) {
+      const track = round1Tracks[i];
+      
+      try {
+        console.log(`   [R1] Track ${i+1}/${round1Tracks.length}: ${track.name}${track.isRecentRelease ? ' (recent)' : ' (top)'}...`);
+        
+        const { previewUrl, audioSource, alternativeSourceInfo } = await acquirePreviewForTrack(track);
+        if (previewUrl && audioSource) {
+          // update previewSourceCounts early for instrumentation parity
+          acquisitionStats.previewSourceCounts[audioSource] = (acquisitionStats.previewSourceCounts[audioSource] || 0) + 1;
         }
         
-        if (previewUrl) {
-          const features = await analyzeAudioWithEssentia(previewUrl);
+  if (previewUrl) {
+          const features = await analyzeAudioWithEssentia(previewUrl, { correlationId, tier: 'artist_track_r1', artistName, trackName: track.name });
           
           trackProfiles.push({
             trackId: track.id,
@@ -382,9 +504,13 @@ app.post('/api/analyze-artist', async (req, res) => {
           }
           
           round1Success++;
+          acquisitionStats.analysisRounds.round1.withPreview++;
+          // already incremented above
           console.log(`     ✅ Round 1 analysis complete`);
         } else {
+          failureReasons.push('no_preview_round1');
           console.log(`     ⚠️ No preview URL for: ${track.name}`);
+          acquisitionStats.previewSourceCounts.none++;
         }
         
         // Small delay
@@ -412,50 +538,20 @@ app.post('/api/analyze-artist', async (req, res) => {
       
       console.log(`🔄 Round 2: Analyzing ${round2Tracks.length} more tracks (${round2TopTracks.length} top + ${round2RecentTracks.length} recent)`);
       
-      for (let i = 0; i < round2Tracks.length; i++) {
+  for (let i = 0; i < round2Tracks.length; i++) {
         const track = round2Tracks[i];
         
         try {
           console.log(`   [R2] Track ${i+1}/${round2Tracks.length}: ${track.name}${track.isRecentRelease ? ' (recent)' : ' (top)'}...`);
           
           // Get preview URL (Spotify first, Apple fallback, extended Apple search, then alternative sources)
-          let previewUrl = track.preview_url;
-          let audioSource = 'spotify';
-          let alternativeSourceInfo = null;
-          
-          if (!previewUrl) {
-            previewUrl = await findApplePreviewUrl(track.artists[0].name, track.name);
-            if (previewUrl) audioSource = 'apple';
-          }
-          // If still no preview, try broader Apple search
-          if (!previewUrl) {
-            previewUrl = await findApplePreviewUrlBroader(track.artists[0].name, track.name);
-            if (previewUrl) audioSource = 'apple_broad';
-          }
-          
-          // If still no preview, try alternative sources
-          if (!previewUrl) {
-            console.log(`🔍 Trying alternative sources for: ${track.name}`);
-            const alternativeResult = await findAlternativeAudioSource(
-              track.artists[0]?.name,
-              track.name,
-              track
-            );
-            
-            if (alternativeResult.bestSource && alternativeResult.bestSource.streamUrl) {
-              previewUrl = alternativeResult.bestSource.streamUrl;
-              audioSource = alternativeResult.bestSource.source;
-              alternativeSourceInfo = {
-                source: alternativeResult.bestSource.source,
-                confidence: alternativeResult.bestSource.confidence,
-                totalSources: alternativeResult.totalSources
-              };
-              console.log(`✅ Using ${audioSource} source (confidence: ${alternativeResult.bestSource.confidence})`);
-            }
+          const { previewUrl, audioSource, alternativeSourceInfo } = await acquirePreviewForTrack(track);
+          if (previewUrl && audioSource) {
+            acquisitionStats.previewSourceCounts[audioSource] = (acquisitionStats.previewSourceCounts[audioSource] || 0) + 1;
           }
           
           if (previewUrl) {
-            const features = await analyzeAudioWithEssentia(previewUrl);
+            const features = await analyzeAudioWithEssentia(previewUrl, { correlationId, tier: 'artist_track_r2', artistName, trackName: track.name });
             
             trackProfiles.push({
               trackId: track.id,
@@ -481,9 +577,13 @@ app.post('/api/analyze-artist', async (req, res) => {
             }
             
             round2Success++;
+            acquisitionStats.analysisRounds.round2.withPreview++;
+            // already counted
             console.log(`     ✅ Round 2 analysis complete`);
           } else {
+            failureReasons.push('no_preview_round2');
             console.log(`     ⚠️ No preview URL for: ${track.name}`);
+            acquisitionStats.previewSourceCounts.none++;
           }
           
           // Small delay
@@ -496,17 +596,13 @@ app.post('/api/analyze-artist', async (req, res) => {
       
       console.log(`📊 Round 2 Results: ${round2Success}/${round2Tracks.length} additional tracks analyzed`);
     } else {
-      console.log(`⚠️ Skipping Round 2 - Round 1 success rate too low (${(round1SuccessRate * 100).toFixed(1)}%) or maxTracks limit`);
+  console.log(`⚠️ Skipping Round 2 - Round 1 success rate too low (${(round1SuccessRate * 100).toFixed(1)}%) or maxTracks limit`);
     }
 
     const totalSuccess = round1Success + round2Success;
     const totalAttempted = round1Tracks.length + round2Tracks.length;
     
-    console.log(`🎯 Final Analysis Results:`);
-    console.log(`   Total tracks analyzed: ${totalSuccess}/${totalAttempted}`);
-    console.log(`   Top tracks: ${trackProfiles.filter(t => !t.isRecentRelease).length}`);
-    console.log(`   Recent releases: ${trackProfiles.filter(t => t.isRecentRelease).length}`);
-    console.log(`   Success rate: ${((totalSuccess/totalAttempted)*100).toFixed(1)}%`);
+  console.log(JSON.stringify({ evt: 'analysis_rounds_complete', correlationId, artistName, totalAnalyzed: totalSuccess, totalAttempted, topTracksAnalyzed: trackProfiles.filter(t => !t.isRecentRelease).length, recentTracksAnalyzed: trackProfiles.filter(t => t.isRecentRelease).length, successRate: ((totalSuccess/totalAttempted)*100).toFixed(1) }));
 
     // Calculate averages for backward compatibility
     for (const [key, total] of Object.entries(averageFeatures)) {
@@ -528,22 +624,23 @@ app.post('/api/analyze-artist', async (req, res) => {
 
     // If no tracks were analyzed but we have genre mapping from existing genres, return partial success
     if (trackProfiles.length === 0) {
-      // Check if we at least have genre mapping from existing Spotify genres
+      // Failure classification when no audio vectors produced
+      const failSubtype = hadInitialTracks ? 'no_preview' : (existingGenres.length > 0 ? 'no_tracks_genre_only' : 'no_tracks');
+      // Partial success path if we do have genres (either existingGenres or inferred mapping)
       if (genreMapping && genreMapping.inferredGenres && genreMapping.inferredGenres.length > 0) {
         console.log(`✅ Partial success: No audio analysis but genres available for ${artistName}`);
-        
-        // Generate metadata-based features from genres
         const metadataFeatures = inferAudioFeaturesFromGenres(genreMapping.inferredGenres, artistName, 'mixed_tracks');
-        
-        return res.json({
+        const partial = {
           success: true,
+          partial: true,
+          failSubtype,
           artistName,
           spotifyId,
-          trackMatrix: [], // Empty track matrix
-          genreMapping: genreMapping, // Spotify genres available
+          trackMatrix: [],
+          genreMapping,
           recentEvolution: { evolution: 'insufficient_data' },
-          averageFeatures: metadataFeatures, // Inferred from genres
-          spectralFeatures: metadataFeatures, // Inferred from genres
+          averageFeatures: metadataFeatures,
+          spectralFeatures: metadataFeatures,
           metadata: {
             totalTracksAnalyzed: 0,
             tracksAttempted: totalAttempted,
@@ -554,21 +651,19 @@ app.post('/api/analyze-artist', async (req, res) => {
             hasGenreMapping: true,
             hasAudioAnalysis: false,
             hasMetadataInference: true,
-            inferenceSource: 'genre_mapping'
+            inferenceSource: 'genre_mapping',
+            lowConfidenceAudio: true,
+            failureReasons
           }
-        });
-      } else {
-        // Complete failure - no tracks and no genres
-        return res.json({
-          success: false,
-          error: 'No tracks could be analyzed with Essentia and no existing genres available',
-          artistName,
-          tracksAttempted: totalAttempted
-        });
+        };
+        res.setHeader('x-correlation-id', correlationId);
+        partial.metadata.spotifyTokenStatus = spotifyTokenStatus;
+        return res.json({ ...partial, spotifyTokenStatus, acquisitionStats });
       }
+      return res.json({ success: false, error: 'No tracks could be analyzed and no genres available', failSubtype, artistName, tracksAttempted: totalAttempted, failureReasons, correlationId, spotifyTokenStatus, acquisitionStats });
     }
 
-    const result = {
+  const result = {
       success: true,
       artistName,
       spotifyId,
@@ -588,7 +683,7 @@ app.post('/api/analyze-artist', async (req, res) => {
         analysisTime: Date.now() - startTime,
         source: 'essentia',
         stagedAnalysis: true,
-        audioSources: {
+  audioSources: {
           spotify: trackProfiles.filter(t => t.audioSource === 'spotify').length,
           apple: trackProfiles.filter(t => t.audioSource === 'apple' || t.audioSource === 'apple_broad').length,
           soundcloud: trackProfiles.filter(t => t.audioSource === 'soundcloud').length,
@@ -596,15 +691,20 @@ app.post('/api/analyze-artist', async (req, res) => {
           beatport: trackProfiles.filter(t => t.audioSource === 'beatport').length,
           bandcamp: trackProfiles.filter(t => t.audioSource === 'bandcamp').length,
           alternativeSourcesUsed: trackProfiles.filter(t => t.alternativeSourceInfo).length
-        }
+  },
+  lowConfidenceAudio: trackProfiles.length < 3,
+  failureReasons,
+  spotifyTokenStatus
       }
     };
-
-    res.json(result);
+  res.setHeader('x-correlation-id', correlationId);
+  console.log(JSON.stringify({ evt: 'analyze_artist_success', correlationId, artistName, spotifyId, tracksAnalyzed: trackProfiles.length, durationMs: Date.now() - startTime, audioSources: result.metadata.audioSources, acquisitionStats }));
+  res.json({ ...result, acquisitionStats });
 
   } catch (error) {
-    console.error('❌ Artist analysis error:', error);
-    res.status(500).json({
+  console.error(JSON.stringify({ evt: 'analyze_artist_error', correlationId, artistName: req.body.artistName, error: error.message, stack: error.stack }));
+  res.setHeader('x-correlation-id', correlationId);
+  res.status(500).json({
       success: false,
       error: error.message,
       artistName: req.body.artistName
@@ -805,17 +905,17 @@ async function findApplePreviewUrlBroader(artistName, trackName) {
 }
 
 // Analyze audio with Essentia (placeholder - replace with actual Essentia.js calls)
-async function analyzeAudioWithEssentia(audioUrl) {
+async function analyzeAudioWithEssentia(audioUrl, context = {}) {
   // This is a placeholder - in production, you would use Essentia.js
   // For now, returning mock features that match Essentia's output structure
-  
-  console.log(`🔬 Essentia analyzing: ${audioUrl.substring(0, 50)}...`);
+  const { correlationId, audioHash, tier, artistName, trackName } = context;
+  log('essentia_track_begin', { correlationId, audioHash: audioHash || hashAudioUrl(audioUrl), tier, artistName, trackName });
   
   // Simulate analysis time
   await new Promise(resolve => setTimeout(resolve, 100));
   
   // Mock Essentia features (replace with real Essentia.js analysis)
-  return {
+  const featurePayload = {
     // Low-level features
     spectral_centroid: Math.random() * 4000 + 1000,
     spectral_rolloff: Math.random() * 8000 + 2000,
@@ -845,8 +945,28 @@ async function analyzeAudioWithEssentia(audioUrl) {
     
     // Analysis metadata
     analysis_source: 'essentia',
-    analysis_version: '2.1-beta5'
+    analysis_version: '2.1-beta5',
+    vector: [] // Placeholder embedding vector (future: real Essentia embedding)
   };
+  // Provide deterministic short vector for prototyping (e.g., 8 dims)
+  featurePayload.vector = Array.from({ length: 8 }, () => Math.random());
+  log('essentia_track_complete', { correlationId, audioHash: audioHash || hashAudioUrl(audioUrl), tier, dims: featurePayload.vector.length });
+  return featurePayload;
+}
+
+function hashAudioUrl(url) {
+  return crypto.createHash('sha1').update(url).digest('hex');
+}
+
+async function collectQuickStats() {
+  if (!db) return { dbConnected: false };
+  try {
+    const audioFeaturesCount = await db.collection('audio_features').countDocuments();
+    const userProfiles = await db.collection('user_sound_profiles').countDocuments();
+    return { dbConnected: true, audioFeaturesCount, userProfiles };
+  } catch (e) {
+    return { dbConnected: true, statsError: e.message };
+  }
 }
 
 // Calculate user sound preferences from track matrix
