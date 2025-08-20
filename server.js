@@ -175,9 +175,10 @@ app.post('/api/analyze-artist', async (req, res) => {
       maxTracks = 20, 
       includeRecentReleases = true,
       existingGenres = [], // Existing Spotify genres from database
-  spotifyCredentials, // New: Accept Spotify credentials from frontend
-  fastMode = false, // New: fast mode to stay under Heroku 30s limit (single round, fewer delays, limited recovery)
-  maxPreviewRecoveryAttempts // Optional override for preview recovery attempts per track
+      spotifyCredentials, // Accept Spotify credentials from frontend (may be absent if we force Apple/SoundCloud mode)
+      fastMode = false, // fast mode to stay under Heroku 30s limit
+      maxPreviewRecoveryAttempts, // Optional override for preview recovery attempts per track
+      previewStrategy: incomingPreviewStrategy // allow client to explicitly force apple-based strategy
     } = req.body;
     
     if (!artistName) {
@@ -222,12 +223,15 @@ app.post('/api/analyze-artist', async (req, res) => {
   soundcloudRescue: 0,
   previewRecovery: { attempts: 0, queries: 0, hits: 0, marketsTried: [], firstHit: null, relaxedAttempts: 0, suffixStrips: 0 },
       fastMode,
-      previewRecoveryLimited: false
+  previewRecoveryLimited: false,
+  spotifyPreviewSuppressed: 0,
+  spotifySuppressedRestored: 0,
     };
   // New: deeper SoundCloud diagnostics for soundcloud_primary / forceSoundCloudTest flows
   acquisitionStats.soundcloudDiagnostics = { attempts: 0, hits: 0, queries: [] };
     // Preview acquisition strategy (default now apple_primary)
-  const previewStrategy = (req.body.previewStrategy || 'apple_primary').toLowerCase();
+  // Determine preview strategy. If Spotify token missing and client did not force something else, prefer apple_primary.
+  const previewStrategy = (incomingPreviewStrategy || (!spotifyToken ? 'apple_primary' : 'apple_primary')).toLowerCase();
   acquisitionStats.previewStrategy = previewStrategy;
   acquisitionStats.appleOverrideSpotify = 0;
   acquisitionStats.spotifyRecoveryDisabled = false;
@@ -326,12 +330,18 @@ app.post('/api/analyze-artist', async (req, res) => {
       }
     }
     
-    // Apple-only fallback if no Spotify access
-    if (tracks.length === 0 && !spotifyToken) {
-      console.log(`🍎 Using Apple-only mode (no Spotify credentials)`);
-      tracks = await findAppleTracksForArtist(artistName, 20);
-      if (tracks.length === 0) failureReasons.push('apple_mode_no_tracks');
-      if (tracks.length > 0) acquisitionStats.fallbacks.appleMode = true;
+    // Apple-only or Apple/SoundCloud (when no Spotify or explicit strategy)
+    if (tracks.length === 0 && (!spotifyToken || previewStrategy.startsWith('apple'))) {
+      const appleLimit = Math.min(50, maxTracks * 3); // fetch broader set to allow top/recent partition
+      console.log(`🍎 Fetching Apple catalog for artist (limit=${appleLimit})`);
+      tracks = await findAppleTracksForArtist(artistName, appleLimit, { includeReleaseDate: true });
+      if (tracks.length === 0) {
+        failureReasons.push('apple_mode_no_tracks');
+      } else {
+        acquisitionStats.fallbacks.appleMode = true;
+        // Re-rank Apple tracks: approximate "top" by presence of preview & randomness (iTunes API lacks popularity score)
+        // We'll keep original order; recent detection already flagged.
+      }
     }
 
     const hadInitialTracks = tracks.length > 0; // for later fail classification
@@ -357,8 +367,8 @@ app.post('/api/analyze-artist', async (req, res) => {
     // Round 2: 5 more top + 5 more recent = 10 more tracks (if Round 1 successful)
     // Total Max: 10 top + 10 recent = 20 tracks
     
-    const topTracks = tracks.filter(t => !t.isRecentRelease);
-    const recentTracks = tracks.filter(t => t.isRecentRelease);
+  const topTracks = tracks.filter(t => !t.isRecentRelease);
+  const recentTracks = tracks.filter(t => t.isRecentRelease);
     
     console.log(`🎵 Available: ${topTracks.length} top tracks, ${recentTracks.length} recent releases`);
     
@@ -378,8 +388,23 @@ app.post('/api/analyze-artist', async (req, res) => {
 
     // Helper: attempt to acquire preview URL (Spotify -> Spotify search variants -> Apple exact -> Apple broad -> SoundCloud -> multi-source aggregator)
     async function acquirePreviewForTrack(track) {
+      // Identify if existing preview belongs to Apple (from Apple artist catalog fetch) vs Spotify
+      const originalApplePreview = (track.preview_url && (track.applePreview || /mzstatic|audio-ssl\.itunes\.apple\.com/i.test(track.preview_url))) ? track.preview_url : null;
       let previewUrl = track.preview_url;
-      let audioSource = previewUrl ? 'spotify' : null;
+      let audioSource = previewUrl ? (originalApplePreview ? 'apple' : 'spotify') : null;
+      // In soundcloud_primary we ONLY suppress Spotify previews (keep Apple unless forceSoundCloudTest explicitly set)
+      let originalSpotifyPreview = null;
+      if (previewUrl && (previewStrategy === 'soundcloud_primary') && audioSource === 'spotify') {
+        originalSpotifyPreview = previewUrl; // remember so we can restore if SC fails
+        previewUrl = null;
+        audioSource = null;
+        acquisitionStats.spotifyPreviewSuppressed++;
+      }
+      // If explicitly forcing SoundCloud test, suppress any existing preview (even Apple) to measure rescue capability
+      if (previewUrl && acquisitionStats.forceSoundCloudTest) {
+        previewUrl = null;
+        audioSource = null;
+      }
       let alternativeSourceInfo = null;
       // Determine per-track recovery limit
       const perTrackRecoveryLimit = maxPreviewRecoveryAttempts
@@ -414,7 +439,10 @@ app.post('/api/analyze-artist', async (req, res) => {
           const primaryArtist = track.artists[0]?.name;
           const scQueryName = track.name;
           acquisitionStats.soundcloudDiagnostics.attempts++;
-          if (acquisitionStats.soundcloudDiagnostics.queries.length < 12) acquisitionStats.soundcloudDiagnostics.queries.push(`${primaryArtist} :: ${scQueryName}`);
+          if (acquisitionStats.soundcloudDiagnostics.queries.length < 12) {
+            const q = `${primaryArtist} :: ${scQueryName}`.replace(/\s+/g,' ').trim();
+            if (!acquisitionStats.soundcloudDiagnostics.queries.includes(q)) acquisitionStats.soundcloudDiagnostics.queries.push(q);
+          }
           const scEarly = await searchSoundCloudAudio(primaryArtist, scQueryName);
           if (scEarly && (scEarly.streamUrl || scEarly.previewUrl)) {
             previewUrl = scEarly.streamUrl || scEarly.previewUrl;
@@ -436,7 +464,10 @@ app.post('/api/analyze-artist', async (req, res) => {
           // 1) Simplified track name search (if changed)
           if (simple && simple !== track.name) {
             acquisitionStats.soundcloudDiagnostics.attempts++;
-            if (acquisitionStats.soundcloudDiagnostics.queries.length < 12) acquisitionStats.soundcloudDiagnostics.queries.push(`${primaryArtist} :: ${simple}`);
+            if (acquisitionStats.soundcloudDiagnostics.queries.length < 12) {
+              const q = `${primaryArtist} :: ${simple}`.replace(/\s+/g,' ').trim();
+              if (!acquisitionStats.soundcloudDiagnostics.queries.includes(q)) acquisitionStats.soundcloudDiagnostics.queries.push(q);
+            }
             const scSimple = await searchSoundCloudAudio(primaryArtist, simple);
             if (!previewUrl && scSimple && (scSimple.streamUrl || scSimple.previewUrl)) {
               previewUrl = scSimple.streamUrl || scSimple.previewUrl;
@@ -449,7 +480,10 @@ app.post('/api/analyze-artist', async (req, res) => {
           // 2) Artist-only query (discover any top track if specific title fails)
           if (!previewUrl) {
             acquisitionStats.soundcloudDiagnostics.attempts++;
-            if (acquisitionStats.soundcloudDiagnostics.queries.length < 12) acquisitionStats.soundcloudDiagnostics.queries.push(`${primaryArtist}`);
+            if (acquisitionStats.soundcloudDiagnostics.queries.length < 12) {
+              const q = `${primaryArtist}`.replace(/\s+/g,' ').trim();
+              if (!acquisitionStats.soundcloudDiagnostics.queries.includes(q)) acquisitionStats.soundcloudDiagnostics.queries.push(q);
+            }
             const scArtistOnly = await searchSoundCloudAudio(primaryArtist, '');
             if (scArtistOnly && (scArtistOnly.streamUrl || scArtistOnly.previewUrl)) {
               previewUrl = scArtistOnly.streamUrl || scArtistOnly.previewUrl;
@@ -599,7 +633,10 @@ app.post('/api/analyze-artist', async (req, res) => {
   if (!previewUrl && process.env.SOUNDCLOUD_CLIENT_ID) {
         try {
           acquisitionStats.soundcloudDiagnostics.attempts++;
-          if (acquisitionStats.soundcloudDiagnostics.queries.length < 12) acquisitionStats.soundcloudDiagnostics.queries.push(`${track.artists[0]?.name} :: ${track.name}`);
+          if (acquisitionStats.soundcloudDiagnostics.queries.length < 12) {
+            const q = `${track.artists[0]?.name} :: ${track.name}`.replace(/\s+/g,' ').trim();
+            if (!acquisitionStats.soundcloudDiagnostics.queries.includes(q)) acquisitionStats.soundcloudDiagnostics.queries.push(q);
+          }
           const sc = await searchSoundCloudAudio(track.artists[0]?.name, track.name);
           if (sc && (sc.streamUrl || sc.previewUrl)) {
             previewUrl = sc.streamUrl || sc.previewUrl;
@@ -631,6 +668,17 @@ app.post('/api/analyze-artist', async (req, res) => {
   if (useApplePrimary && !forceSoundCloudTest && !soundcloudPrimary && !previewUrl && track.preview_url) {
         previewUrl = track.preview_url;
         audioSource = 'spotify';
+      }
+      // NEW: In soundcloud_primary (or forced SC test) if all SC attempts failed, restore original Apple preview (if any) so we still analyze audio
+      if (!previewUrl && (soundcloudPrimary || forceSoundCloudTest) && originalApplePreview) {
+        previewUrl = originalApplePreview;
+        audioSource = 'apple';
+      }
+      // If still nothing AND we had suppressed a Spotify preview (soundcloud_primary without force test), restore it
+      if (!previewUrl && soundcloudPrimary && !forceSoundCloudTest && originalSpotifyPreview) {
+        previewUrl = originalSpotifyPreview;
+        audioSource = 'spotify';
+        acquisitionStats.spotifySuppressedRestored++;
       }
       return { previewUrl, audioSource, alternativeSourceInfo };
     }
@@ -874,6 +922,30 @@ app.post('/api/analyze-artist', async (req, res) => {
       }
     };
   res.setHeader('x-correlation-id', correlationId);
+  // Persist artist-level profile (audio + genres) for downstream unified events/frontend
+  try {
+    if (db) {
+      await db.collection('artist_genre_profiles').updateOne(
+        { artistName: artistName.toLowerCase() },
+        { $set: {
+            artistName,
+            spotifyId: spotifyId || null,
+            updatedAt: new Date(),
+            trackMatrix: trackProfiles,
+            genreMapping: result.genreMapping,
+            averageFeatures: result.averageFeatures,
+            spectralFeatures: result.spectralFeatures,
+            recentEvolution: result.recentEvolution,
+            acquisitionStats,
+            audioSourcesSummary: result.metadata.audioSources,
+            totalTracksAnalyzed: result.metadata.totalTracksAnalyzed
+          } },
+        { upsert: true }
+      );
+    }
+  } catch (persistErr) {
+    console.warn('⚠️ Failed to persist artist_genre_profiles:', persistErr.message);
+  }
   console.log(JSON.stringify({ evt: 'analyze_artist_success', correlationId, artistName, spotifyId, tracksAnalyzed: trackProfiles.length, durationMs: Date.now() - startTime, audioSources: result.metadata.audioSources, acquisitionStats }));
   res.json({ ...result, acquisitionStats });
 
@@ -1050,6 +1122,7 @@ async function findAppleTracksForArtist(artistName, limit = 20) {
           album: { name: result.collectionName },
           popularity: 50, // Default
           preview_url: result.previewUrl,
+          applePreview: !!result.previewUrl,
           external_urls: { itunes: result.trackViewUrl }
         }));
       }
@@ -1127,6 +1200,7 @@ async function analyzeAudioWithEssentia(audioUrl, context = {}) {
   // Provide deterministic short vector for prototyping (e.g., 8 dims)
   featurePayload.vector = Array.from({ length: 8 }, () => Math.random());
   log('essentia_track_complete', { correlationId, audioHash: audioHash || hashAudioUrl(audioUrl), tier, dims: featurePayload.vector.length });
+  // Return mock features (placeholder until real Essentia integration)
   return featurePayload;
 }
 
