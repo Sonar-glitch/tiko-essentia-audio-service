@@ -402,11 +402,12 @@ app.post('/api/analyze-artist', async (req, res) => {
         }
         return base.replace(/\s{2,}/g,' ').trim();
       }
-      const useApplePrimary = previewStrategy === 'apple_primary';
-      const forceSoundCloudTest = previewStrategy === 'soundcloud_primary' || acquisitionStats.forceSoundCloudTest;
+  const useApplePrimary = previewStrategy === 'apple_primary';
+  const soundcloudPrimary = previewStrategy === 'soundcloud_primary';
+  const forceSoundCloudTest = soundcloudPrimary || acquisitionStats.forceSoundCloudTest;
 
       // (EARLY) Force SoundCloud path before any Apple/Spotify recovery when testing SC directly
-      if (!previewUrl && forceSoundCloudTest && process.env.SOUNDCLOUD_CLIENT_ID) {
+  if (!previewUrl && forceSoundCloudTest && process.env.SOUNDCLOUD_CLIENT_ID) {
         try {
           const scEarly = await searchSoundCloudAudio(track.artists[0]?.name, track.name);
           if (scEarly && (scEarly.streamUrl || scEarly.previewUrl)) {
@@ -421,7 +422,7 @@ app.post('/api/analyze-artist', async (req, res) => {
       }
 
       // APPLE PRIMARY STRATEGY: Attempt Apple sources before any Spotify recovery.
-  if (useApplePrimary && !forceSoundCloudTest) { // skip Apple entirely if forcing SC test
+  if (useApplePrimary && !forceSoundCloudTest) { // skip Apple entirely if forcing SC test or SC primary
         // Even if Spotify preview exists, we prefer Apple for consistency; only fallback to Spotify if Apple not found.
         let hadSpotify = !!previewUrl;
         if (track.artists && track.artists[0] && track.name) {
@@ -444,7 +445,7 @@ app.post('/api/analyze-artist', async (req, res) => {
       }
 
   // (1) Attempt Spotify recovery (only if NOT apple_primary strategy)
-  if (!previewUrl && spotifyToken && !useApplePrimary) {
+  if (!previewUrl && spotifyToken && !useApplePrimary && !forceSoundCloudTest && !soundcloudPrimary) {
         try {
           // In fastMode restrict to first market to reduce latency
           const marketsEnv = (process.env.SPOTIFY_PREVIEW_MARKETS || 'US,GB,DE,SE,CA').split(',').map(m => m.trim()).filter(Boolean);
@@ -534,25 +535,25 @@ app.post('/api/analyze-artist', async (req, res) => {
           // silent; recovery optional
         }
       }
-  if (useApplePrimary && !forceSoundCloudTest && !previewUrl) {
+  if ((useApplePrimary || forceSoundCloudTest || soundcloudPrimary) && !previewUrl) {
         acquisitionStats.spotifyRecoveryDisabled = true; // recorded if we skipped the spotify recovery block
       }
       // (2) Apple exact (balanced strategy only)
-      if (!previewUrl && !useApplePrimary) {
+  if (!previewUrl && !useApplePrimary && !forceSoundCloudTest && !soundcloudPrimary) {
         try {
           previewUrl = await findApplePreviewUrl(track.artists[0].name, track.name);
           if (previewUrl) audioSource = 'apple';
         } catch (e) {}
       }
       // (3) Apple broad (balanced strategy only)
-      if (!previewUrl && !useApplePrimary) {
+  if (!previewUrl && !useApplePrimary && !forceSoundCloudTest && !soundcloudPrimary) {
         try {
           previewUrl = await findApplePreviewUrlBroader(track.artists[0].name, track.name);
           if (previewUrl) audioSource = 'apple_broad';
         } catch (e) {}
       }
       // (4) SoundCloud explicit (secondary after Apple in apple_primary, same position otherwise) if client ID configured
-      if (!previewUrl && process.env.SOUNDCLOUD_CLIENT_ID) {
+  if (!previewUrl && process.env.SOUNDCLOUD_CLIENT_ID) {
         try {
           const sc = await searchSoundCloudAudio(track.artists[0]?.name, track.name);
           if (sc && (sc.streamUrl || sc.previewUrl)) {
@@ -581,7 +582,7 @@ app.post('/api/analyze-artist', async (req, res) => {
         } catch (e) {}
       }
       // (6) Fallback to original Spotify preview if we skipped earlier and Apple/SoundCloud/alt failed (apple_primary only)
-      if (useApplePrimary && !previewUrl && track.preview_url) {
+  if (useApplePrimary && !forceSoundCloudTest && !soundcloudPrimary && !previewUrl && track.preview_url) {
         previewUrl = track.preview_url;
         audioSource = 'spotify';
       }
