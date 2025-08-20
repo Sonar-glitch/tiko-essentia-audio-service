@@ -218,9 +218,9 @@ app.post('/api/analyze-artist', async (req, res) => {
       initialSpotifyTracks: 0,
       initialSpotifyTracksWithPreview: 0,
       missingSpotifyPreviewSample: [],
-      spotifyPreviewRecovered: 0,
+    spotifyPreviewRecovered: 0,
   soundcloudRescue: 0,
-  previewRecovery: { attempts: 0, queries: 0, hits: 0, marketsTried: [], firstHit: null },
+  previewRecovery: { attempts: 0, queries: 0, hits: 0, marketsTried: [], firstHit: null, relaxedAttempts: 0, suffixStrips: 0 },
       fastMode,
       previewRecoveryLimited: false
     };
@@ -374,6 +374,24 @@ app.post('/api/analyze-artist', async (req, res) => {
         ? Number(maxPreviewRecoveryAttempts)
         : (fastMode ? 20 : 120); // total query attempts across all patterns/markets per track
       let perTrackAttempts = 0;
+      // Utility: clean track name (remove mix/remix suffixes and parenthetical descriptors)
+      function simplifyName(name) {
+        if (!name) return name;
+        let base = name;
+        // Remove parenthetical descriptors e.g. (Mixed), (Remix), (feat. ...)
+        base = base.replace(/\([^)]*\)/gi, '').trim();
+        // Common dash-separated suffixes we want to remove for relaxed search
+        const dashIdx = base.indexOf(' - ');
+        if (dashIdx !== -1) {
+          const candidate = base.substring(0, dashIdx).trim();
+          // Only treat as suffix if right side contains remix/mixed/edit/reform
+          if (/remix|mixed|edit|reform|version/i.test(base.substring(dashIdx+3))) {
+            acquisitionStats.previewRecovery.suffixStrips++;
+            base = candidate;
+          }
+        }
+        return base.replace(/\s{2,}/g,' ').trim();
+      }
 
       // (1) Attempt Spotify multi-market & search variant recovery if no direct preview
       if (!previewUrl && spotifyToken) {
@@ -420,6 +438,39 @@ app.post('/api/analyze-artist', async (req, res) => {
               }
               if (recovered) break;
               if (perTrackAttempts >= perTrackRecoveryLimit) break;
+
+              // Relaxed phase: simplified name (once per candidate) if not found yet
+              if (!recovered && perTrackAttempts < perTrackRecoveryLimit) {
+                const simple = simplifyName(track.name);
+                if (simple && simple !== track.name) {
+                  const relaxedPatterns = [
+                    `track:"${simple}" artist:"${cand}"`,
+                    `${simple} ${cand}`
+                  ];
+                  for (const rpat of relaxedPatterns) {
+                    if (perTrackAttempts >= perTrackRecoveryLimit) { acquisitionStats.previewRecoveryLimited = true; break; }
+                    acquisitionStats.previewRecovery.attempts++;
+                    acquisitionStats.previewRecovery.relaxedAttempts++;
+                    acquisitionStats.previewRecovery.queries++;
+                    const rq = encodeURIComponent(rpat);
+                    const rresp = await fetch(`https://api.spotify.com/v1/search?q=${rq}&type=track&market=${m}&limit=5`, { headers: { 'Authorization': `Bearer ${spotifyToken}` } });
+                    if (rresp.ok) {
+                      const rdata = await rresp.json();
+                      const rcand = rdata.tracks?.items?.find(it => it.preview_url && (it.id === track.id || it.name.toLowerCase() === simple.toLowerCase()));
+                      if (rcand) { 
+                        recovered = rcand; 
+                        acquisitionStats.previewRecovery.hits++;
+                        if (!acquisitionStats.previewRecovery.firstHit) {
+                          acquisitionStats.previewRecovery.firstHit = { market: m, pattern: rpat, artist: cand, relaxed: true };
+                        }
+                        break; 
+                      }
+                    }
+                    perTrackAttempts++;
+                    await new Promise(r => setTimeout(r, fastMode ? 40 : 100));
+                  }
+                }
+              }
             }
             if (recovered) break;
             if (perTrackAttempts >= perTrackRecoveryLimit) break;
