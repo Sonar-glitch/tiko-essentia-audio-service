@@ -224,6 +224,8 @@ app.post('/api/analyze-artist', async (req, res) => {
       fastMode,
       previewRecoveryLimited: false
     };
+  // New: deeper SoundCloud diagnostics for soundcloud_primary / forceSoundCloudTest flows
+  acquisitionStats.soundcloudDiagnostics = { attempts: 0, hits: 0, queries: [] };
     // Preview acquisition strategy (default now apple_primary)
   const previewStrategy = (req.body.previewStrategy || 'apple_primary').toLowerCase();
   acquisitionStats.previewStrategy = previewStrategy;
@@ -409,15 +411,56 @@ app.post('/api/analyze-artist', async (req, res) => {
       // (EARLY) Force SoundCloud path before any Apple/Spotify recovery when testing SC directly
   if (!previewUrl && forceSoundCloudTest && process.env.SOUNDCLOUD_CLIENT_ID) {
         try {
-          const scEarly = await searchSoundCloudAudio(track.artists[0]?.name, track.name);
+          const primaryArtist = track.artists[0]?.name;
+          const scQueryName = track.name;
+          acquisitionStats.soundcloudDiagnostics.attempts++;
+          if (acquisitionStats.soundcloudDiagnostics.queries.length < 12) acquisitionStats.soundcloudDiagnostics.queries.push(`${primaryArtist} :: ${scQueryName}`);
+          const scEarly = await searchSoundCloudAudio(primaryArtist, scQueryName);
           if (scEarly && (scEarly.streamUrl || scEarly.previewUrl)) {
             previewUrl = scEarly.streamUrl || scEarly.previewUrl;
             audioSource = 'soundcloud';
             alternativeSourceInfo = { source: 'soundcloud', confidence: scEarly.confidence || 0.85, forced: true };
             acquisitionStats.soundcloudRescue++;
+            acquisitionStats.soundcloudDiagnostics.hits++;
           }
         } catch (e) {
           // ignore – continue to normal flow
+        }
+      }
+
+      // If still no SoundCloud result and SoundCloud is primary/test, attempt simplified & artist‑only queries
+      if (!previewUrl && (forceSoundCloudTest || soundcloudPrimary) && process.env.SOUNDCLOUD_CLIENT_ID) {
+        try {
+          const primaryArtist = track.artists[0]?.name;
+          const simple = simplifyName(track.name);
+          // 1) Simplified track name search (if changed)
+          if (simple && simple !== track.name) {
+            acquisitionStats.soundcloudDiagnostics.attempts++;
+            if (acquisitionStats.soundcloudDiagnostics.queries.length < 12) acquisitionStats.soundcloudDiagnostics.queries.push(`${primaryArtist} :: ${simple}`);
+            const scSimple = await searchSoundCloudAudio(primaryArtist, simple);
+            if (!previewUrl && scSimple && (scSimple.streamUrl || scSimple.previewUrl)) {
+              previewUrl = scSimple.streamUrl || scSimple.previewUrl;
+              audioSource = 'soundcloud';
+              alternativeSourceInfo = { source: 'soundcloud', confidence: scSimple.confidence || 0.8, simplified: true };
+              acquisitionStats.soundcloudRescue++;
+              acquisitionStats.soundcloudDiagnostics.hits++;
+            }
+          }
+          // 2) Artist-only query (discover any top track if specific title fails)
+          if (!previewUrl) {
+            acquisitionStats.soundcloudDiagnostics.attempts++;
+            if (acquisitionStats.soundcloudDiagnostics.queries.length < 12) acquisitionStats.soundcloudDiagnostics.queries.push(`${primaryArtist}`);
+            const scArtistOnly = await searchSoundCloudAudio(primaryArtist, '');
+            if (scArtistOnly && (scArtistOnly.streamUrl || scArtistOnly.previewUrl)) {
+              previewUrl = scArtistOnly.streamUrl || scArtistOnly.previewUrl;
+              audioSource = 'soundcloud';
+              alternativeSourceInfo = { source: 'soundcloud', confidence: scArtistOnly.confidence || 0.7, artistOnly: true };
+              acquisitionStats.soundcloudRescue++;
+              acquisitionStats.soundcloudDiagnostics.hits++;
+            }
+          }
+        } catch (e) {
+          // continue silently
         }
       }
 
@@ -555,12 +598,15 @@ app.post('/api/analyze-artist', async (req, res) => {
       // (4) SoundCloud explicit (secondary after Apple in apple_primary, same position otherwise) if client ID configured
   if (!previewUrl && process.env.SOUNDCLOUD_CLIENT_ID) {
         try {
+          acquisitionStats.soundcloudDiagnostics.attempts++;
+          if (acquisitionStats.soundcloudDiagnostics.queries.length < 12) acquisitionStats.soundcloudDiagnostics.queries.push(`${track.artists[0]?.name} :: ${track.name}`);
           const sc = await searchSoundCloudAudio(track.artists[0]?.name, track.name);
           if (sc && (sc.streamUrl || sc.previewUrl)) {
             previewUrl = sc.streamUrl || sc.previewUrl;
             audioSource = 'soundcloud';
             alternativeSourceInfo = { source: 'soundcloud', confidence: sc.confidence || 0.8 };
             acquisitionStats.soundcloudRescue++;
+            acquisitionStats.soundcloudDiagnostics.hits++;
           }
         } catch (e) {
           // ignore
