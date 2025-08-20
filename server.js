@@ -175,7 +175,9 @@ app.post('/api/analyze-artist', async (req, res) => {
       maxTracks = 20, 
       includeRecentReleases = true,
       existingGenres = [], // Existing Spotify genres from database
-      spotifyCredentials // New: Accept Spotify credentials from frontend
+  spotifyCredentials, // New: Accept Spotify credentials from frontend
+  fastMode = false, // New: fast mode to stay under Heroku 30s limit (single round, fewer delays, limited recovery)
+  maxPreviewRecoveryAttempts // Optional override for preview recovery attempts per track
     } = req.body;
     
     if (!artistName) {
@@ -218,7 +220,9 @@ app.post('/api/analyze-artist', async (req, res) => {
       missingSpotifyPreviewSample: [],
       spotifyPreviewRecovered: 0,
   soundcloudRescue: 0,
-  previewRecovery: { attempts: 0, queries: 0, hits: 0, marketsTried: [], firstHit: null }
+  previewRecovery: { attempts: 0, queries: 0, hits: 0, marketsTried: [], firstHit: null },
+      fastMode,
+      previewRecoveryLimited: false
     };
 
     // Method 1: Get top tracks using artist ID (if provided and we have Spotify token)
@@ -349,7 +353,8 @@ app.post('/api/analyze-artist', async (req, res) => {
     // Round 1: First 10 tracks (5 top + 5 recent)
     const round1TopTracks = topTracks.slice(0, 5);
     const round1RecentTracks = recentTracks.slice(0, 5);
-  const round1Tracks = [...round1TopTracks, ...round1RecentTracks];
+  // In fastMode only analyze top tracks first (up to 5) to guarantee speed
+  const round1Tracks = fastMode ? round1TopTracks : [...round1TopTracks, ...round1RecentTracks];
   acquisitionStats.analysisRounds.round1.attempted = round1Tracks.length;
     
     console.log(`🔄 Round 1: Analyzing ${round1Tracks.length} tracks (${round1TopTracks.length} top + ${round1RecentTracks.length} recent)`);
@@ -364,11 +369,18 @@ app.post('/api/analyze-artist', async (req, res) => {
       let previewUrl = track.preview_url;
       let audioSource = previewUrl ? 'spotify' : null;
       let alternativeSourceInfo = null;
+      // Determine per-track recovery limit
+      const perTrackRecoveryLimit = maxPreviewRecoveryAttempts
+        ? Number(maxPreviewRecoveryAttempts)
+        : (fastMode ? 20 : 120); // total query attempts across all patterns/markets per track
+      let perTrackAttempts = 0;
 
       // (1) Attempt Spotify multi-market & search variant recovery if no direct preview
       if (!previewUrl && spotifyToken) {
         try {
-          const markets = (process.env.SPOTIFY_PREVIEW_MARKETS || 'US,GB,DE,SE,CA').split(',').map(m => m.trim()).filter(Boolean);
+          // In fastMode restrict to first market to reduce latency
+          const marketsEnv = (process.env.SPOTIFY_PREVIEW_MARKETS || 'US,GB,DE,SE,CA').split(',').map(m => m.trim()).filter(Boolean);
+          const markets = fastMode ? [marketsEnv[0] || 'US'] : marketsEnv;
           let recovered = null;
           const unique = (arr) => [...new Set(arr.filter(Boolean))];
           const artistCandidates = unique([
@@ -385,6 +397,7 @@ app.post('/api/analyze-artist', async (req, res) => {
                 `track:"${track.name}" "${cand}"`
               ];
               for (const pattern of patterns) {
+                if (perTrackAttempts >= perTrackRecoveryLimit) { acquisitionStats.previewRecoveryLimited = true; break; }
                 acquisitionStats.previewRecovery.attempts++;
                 acquisitionStats.previewRecovery.queries++;
                 const q = encodeURIComponent(pattern);
@@ -401,11 +414,15 @@ app.post('/api/analyze-artist', async (req, res) => {
                     break; 
                   }
                 }
-                await new Promise(r => setTimeout(r, 120));
+                perTrackAttempts++;
+                // Shorter delay in fastMode
+                await new Promise(r => setTimeout(r, fastMode ? 50 : 120));
               }
               if (recovered) break;
+              if (perTrackAttempts >= perTrackRecoveryLimit) break;
             }
             if (recovered) break;
+            if (perTrackAttempts >= perTrackRecoveryLimit) break;
           }
           if (recovered && recovered.preview_url) {
             previewUrl = recovered.preview_url;
@@ -514,7 +531,7 @@ app.post('/api/analyze-artist', async (req, res) => {
         }
         
         // Small delay
-        await new Promise(resolve => setTimeout(resolve, 500));
+  await new Promise(resolve => setTimeout(resolve, fastMode ? 150 : 500));
         
       } catch (error) {
         console.warn(`⚠️ Round 1 failed to analyze ${track.name}:`, error.message);
@@ -528,7 +545,10 @@ app.post('/api/analyze-artist', async (req, res) => {
     let round2Success = 0;
     let round2Tracks = []; // Initialize empty array
     
-    if (round1SuccessRate >= 0.4 && maxTracks > 10) { // At least 40% success rate and maxTracks allows more
+  // Skip Round 2 in fastMode or if nearing Heroku 30s timeout (safety guard at 22s)
+  const elapsedMs = Date.now() - startTime;
+  const nearingTimeout = elapsedMs > 22000; // heroku hard timeout 30s
+  if (!fastMode && !nearingTimeout && round1SuccessRate >= 0.4 && maxTracks > 10) { // At least 40% success rate and maxTracks allows more
       console.log(`🔄 Round 1 success rate: ${(round1SuccessRate * 100).toFixed(1)}% - Starting Round 2`);
       
       // Round 2: Next 10 tracks (5 more top + 5 more recent)
@@ -587,7 +607,7 @@ app.post('/api/analyze-artist', async (req, res) => {
           }
           
           // Small delay
-          await new Promise(resolve => setTimeout(resolve, 500));
+          await new Promise(resolve => setTimeout(resolve, fastMode ? 150 : 500));
           
         } catch (error) {
           console.warn(`⚠️ Round 2 failed to analyze ${track.name}:`, error.message);
@@ -596,7 +616,7 @@ app.post('/api/analyze-artist', async (req, res) => {
       
       console.log(`📊 Round 2 Results: ${round2Success}/${round2Tracks.length} additional tracks analyzed`);
     } else {
-  console.log(`⚠️ Skipping Round 2 - Round 1 success rate too low (${(round1SuccessRate * 100).toFixed(1)}%) or maxTracks limit`);
+  console.log(`⚠️ Skipping Round 2 - Conditions unmet (fastMode=${fastMode}, nearingTimeout=${nearingTimeout}, successRate=${(round1SuccessRate * 100).toFixed(1)}%, maxTracks=${maxTracks})`);
     }
 
     const totalSuccess = round1Success + round2Success;
@@ -683,6 +703,7 @@ app.post('/api/analyze-artist', async (req, res) => {
         analysisTime: Date.now() - startTime,
         source: 'essentia',
         stagedAnalysis: true,
+  fastMode,
   audioSources: {
           spotify: trackProfiles.filter(t => t.audioSource === 'spotify').length,
           apple: trackProfiles.filter(t => t.audioSource === 'apple' || t.audioSource === 'apple_broad').length,
