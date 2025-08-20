@@ -315,6 +315,14 @@ function inferFeaturesFromArtistName(artistName) {
   return {}; // No artist-based inference
 }
 
+// Compatibility wrapper expected by server.js
+// Older code calls inferAudioFeaturesFromGenres(genres, artistName, mode)
+function inferAudioFeaturesFromGenres(genres, artistName, mode) {
+  // Delegate to the metadata-based inference function.
+  // server.js expects an object of inferred features.
+  return inferAudioFeaturesFromMetadata(artistName || 'unknown', null, genres || []);
+}
+
 module.exports = {
   findYouTubeAudioUrl,
   findSoundCloudAudioUrl,
@@ -323,5 +331,6 @@ module.exports = {
   findAudioUrlEnhanced,
   inferAudioFeaturesFromMetadata,
   inferFeaturesFromGenres,
-  inferFeaturesFromArtistName
+  inferFeaturesFromArtistName,
+  inferAudioFeaturesFromGenres
 };
