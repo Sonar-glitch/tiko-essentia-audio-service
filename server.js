@@ -218,12 +218,17 @@ app.post('/api/analyze-artist', async (req, res) => {
       initialSpotifyTracks: 0,
       initialSpotifyTracksWithPreview: 0,
       missingSpotifyPreviewSample: [],
-    spotifyPreviewRecovered: 0,
+      spotifyPreviewRecovered: 0,
   soundcloudRescue: 0,
   previewRecovery: { attempts: 0, queries: 0, hits: 0, marketsTried: [], firstHit: null, relaxedAttempts: 0, suffixStrips: 0 },
       fastMode,
       previewRecoveryLimited: false
     };
+    // Preview acquisition strategy (default now apple_primary)
+    const previewStrategy = (req.body.previewStrategy || 'apple_primary').toLowerCase();
+    acquisitionStats.previewStrategy = previewStrategy;
+    acquisitionStats.appleOverrideSpotify = 0;
+    acquisitionStats.spotifyRecoveryDisabled = false;
 
     // Method 1: Get top tracks using artist ID (if provided and we have Spotify token)
   if (spotifyId && spotifyToken) {
@@ -392,9 +397,33 @@ app.post('/api/analyze-artist', async (req, res) => {
         }
         return base.replace(/\s{2,}/g,' ').trim();
       }
+      const useApplePrimary = previewStrategy === 'apple_primary';
 
-      // (1) Attempt Spotify multi-market & search variant recovery if no direct preview
-      if (!previewUrl && spotifyToken) {
+      // APPLE PRIMARY STRATEGY: Attempt Apple sources before any Spotify recovery.
+      if (useApplePrimary) {
+        // Even if Spotify preview exists, we prefer Apple for consistency; only fallback to Spotify if Apple not found.
+        let hadSpotify = !!previewUrl;
+        if (track.artists && track.artists[0] && track.name) {
+          if (!previewUrl) {
+            try {
+              previewUrl = await findApplePreviewUrl(track.artists[0].name, track.name);
+              if (previewUrl) audioSource = 'apple';
+            } catch (e) {}
+          }
+          if (!previewUrl) {
+            try {
+              const broad = await findApplePreviewUrlBroader(track.artists[0].name, track.name);
+              if (broad) { previewUrl = broad; audioSource = 'apple_broad'; }
+            } catch (e) {}
+          }
+        }
+        if (previewUrl && audioSource && hadSpotify && audioSource.startsWith('apple')) {
+          acquisitionStats.appleOverrideSpotify++;
+        }
+      }
+
+  // (1) Attempt Spotify recovery (only if NOT apple_primary strategy)
+  if (!previewUrl && spotifyToken && !useApplePrimary) {
         try {
           // In fastMode restrict to first market to reduce latency
           const marketsEnv = (process.env.SPOTIFY_PREVIEW_MARKETS || 'US,GB,DE,SE,CA').split(',').map(m => m.trim()).filter(Boolean);
@@ -484,22 +513,24 @@ app.post('/api/analyze-artist', async (req, res) => {
           // silent; recovery optional
         }
       }
-
-      // (2) Apple exact
-      if (!previewUrl) {
+      if (useApplePrimary && !previewUrl) {
+        acquisitionStats.spotifyRecoveryDisabled = true; // recorded if we skipped the spotify recovery block
+      }
+      // (2) Apple exact (balanced strategy only)
+      if (!previewUrl && !useApplePrimary) {
         try {
           previewUrl = await findApplePreviewUrl(track.artists[0].name, track.name);
           if (previewUrl) audioSource = 'apple';
         } catch (e) {}
       }
-      // (3) Apple broad
-      if (!previewUrl) {
+      // (3) Apple broad (balanced strategy only)
+      if (!previewUrl && !useApplePrimary) {
         try {
           previewUrl = await findApplePreviewUrlBroader(track.artists[0].name, track.name);
           if (previewUrl) audioSource = 'apple_broad';
         } catch (e) {}
       }
-      // (4) SoundCloud explicit (before generic multi-source) if client ID configured
+      // (4) SoundCloud explicit (secondary after Apple in apple_primary, same position otherwise) if client ID configured
       if (!previewUrl && process.env.SOUNDCLOUD_CLIENT_ID) {
         try {
           const sc = await searchSoundCloudAudio(track.artists[0]?.name, track.name);
@@ -527,6 +558,11 @@ app.post('/api/analyze-artist', async (req, res) => {
             };
           }
         } catch (e) {}
+      }
+      // (6) Fallback to original Spotify preview if we skipped earlier and Apple/SoundCloud/alt failed (apple_primary only)
+      if (useApplePrimary && !previewUrl && track.preview_url) {
+        previewUrl = track.preview_url;
+        audioSource = 'spotify';
       }
       return { previewUrl, audioSource, alternativeSourceInfo };
     }
