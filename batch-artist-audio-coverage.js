@@ -67,7 +67,18 @@ const dryRun = hasFlag('dry');
   const results = [];
 
   for (const artist of artists) {
-    const aName = artist.name; const spotifyId = artist.spotifyId; const existingGenres = artist.genres || [];
+    // be defensive: some artist docs may not have a `name` field (older/dirty data)
+    const aName = (artist && (artist.name || artist.artistName || artist.displayName || (artist._id && artist._id.toString()))) || null;
+    const spotifyId = artist && artist.spotifyId;
+    const existingGenres = (artist && artist.genres) || [];
+    if (!aName) {
+      // log the offending doc minimally and skip to avoid calling the API with `undefined`
+      process.stdout.write(`\n👉 undefined (missing name) ... `);
+      console.error('\n   ❌ Missing artist name for document:', JSON.stringify({ _id: artist && artist._id, spotifyId: artist && artist.spotifyId }));
+      skipped++;
+      results.push({ name: null, status: 'error', message: 'missing name', docId: artist && artist._id, spotifyId: artist && artist.spotifyId });
+      continue;
+    }
     process.stdout.write(`\n👉 ${aName} ... `);
 
     // Quick existing coverage check: count track vectors for this artist in audio_features
