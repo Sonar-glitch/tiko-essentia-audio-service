@@ -46,6 +46,8 @@ const genreFilter = getArg('genre', null); // e.g. --genre "progressive house"
 const maxTracks = parseInt(getArg('maxTracks','10'),10);
 const minMissingVectors = parseInt(getArg('minMissing','3'),10); // threshold to trigger SC pass
 const dryRun = hasFlag('dry');
+// Allow explicit control of fastMode from CLI: --fastMode or --noFastMode (default: true)
+const fastModeFlag = hasFlag('fastMode') ? true : (hasFlag('noFastMode') ? false : true);
 
 (async () => {
   const client = await MongoClient.connect(MONGODB_URI);
@@ -71,7 +73,11 @@ const dryRun = hasFlag('dry');
       // exact-ish match for the requested genre
       q.genres.$elemMatch.$regex = new RegExp(genreFilter.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'), 'i');
     }
-    artists = await artistCol.find(q, { projection: { name:1, spotifyId:1, genres:1 } })
+    // Only select artists that are missing an Essentia profile to resume work efficiently.
+    const missingProfileOrEmpty = { $or: [ { essentiaAudioProfile: { $exists: false } }, { 'essentiaAudioProfile.trackMatrix': { $exists: false } }, { 'essentiaAudioProfile.trackMatrix': { $size: 0 } } ] };
+    const baseQ = Object.keys(q).length ? { $and: [ q, missingProfileOrEmpty ] } : missingProfileOrEmpty;
+
+    artists = await artistCol.find(baseQ, { projection: { name:1, spotifyId:1, genres:1, essentiaProfileBuilt:1 } })
       .limit(limit)
       .toArray();
   }
@@ -97,6 +103,13 @@ const dryRun = hasFlag('dry');
 
     // Quick existing coverage check: count track vectors for this artist in audio_features
     const existingVectors = await audioCol.countDocuments({ 'features.analysis_source': 'essentia', artist: aName });
+    // If an Essentia profile is already built, skip unless the caller explicitly requests re-run with --force
+    if (artist && artist.essentiaProfileBuilt && !hasFlag('force')) {
+      process.stdout.write(`skip (essentia profile exists)\n`);
+      skipped++;
+      results.push({ name: aName, status: 'skip_profile', existingVectors });
+      continue;
+    }
     if (existingVectors >= maxTracks) {
       process.stdout.write(`skip (already ${existingVectors} vectors)\n`);
       skipped++;
@@ -122,13 +135,15 @@ const dryRun = hasFlag('dry');
         const sources = appleResp.metadata?.audioSources || {};
         entry.passes.push({ strategy: 'apple', analyzed, sources, acquisitionStats: appleResp.acquisitionStats || null });
       }
-      if ((soundcloudPass || soundcloudOnly)) {
+  if ((soundcloudPass || soundcloudOnly)) {
         // Only run SC pass if still under target coverage
         const postAppleVectors = await audioCol.countDocuments({ 'features.analysis_source': 'essentia', artist: aName });
         const stillMissing = postAppleVectors < maxTracks - 1; // modest slack
         if (stillMissing) {
           scTriggered++;
-          const scResp = await callAnalyze(aName, spotifyId, existingGenres, 'soundcloud_primary', { forceSoundCloudTest: true });
+          // SoundCloud removed: replace soundcloud_primary strategy with 'apple_primary' for diagnostic runs
+          const scResp = await callAnalyze(aName, spotifyId, existingGenres, 'apple_primary', { forceSoundCloudTest: true });
+          // legacy label kept for compatibility but the analysis now prefers Apple/Deezer paths
           reportResult('soundcloud', scResp);
           lastAnalysis = scResp || lastAnalysis;
           const analyzed = scResp.metadata?.totalTracksAnalyzed || 0;
@@ -184,7 +199,7 @@ const dryRun = hasFlag('dry');
 })();
 
 async function callAnalyze(artistName, spotifyId, existingGenres, strategy, extraBody={}) {
-  const body = { artistName, spotifyId, existingGenres, maxTracks, fastMode: true, previewStrategy: strategy, ...extraBody };
+  const body = { artistName, spotifyId, existingGenres, maxTracks, fastMode: fastModeFlag, previewStrategy: strategy, ...extraBody };
   const resp = await fetch(`${SERVICE_URL}/api/analyze-artist`, { method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify(body) });
   if (!resp.ok) throw new Error(`analyze-artist failed ${resp.status}`);
   return resp.json();
@@ -194,8 +209,8 @@ function reportResult(label, r){
   if (!r) return;
   const analyzed = r.metadata?.totalTracksAnalyzed || 0;
   const sources = r.metadata?.audioSources || {};
-  const sc = sources.soundcloud || 0;
+  const deezer = sources.deezer || 0;
   const apple = sources.apple || 0;
-  process.stdout.write(`${label}[tracks=${analyzed}, apple=${apple}, sc=${sc}]`);
-  if (r.acquisitionStats?.soundcloudRescue) process.stdout.write(` rescueSC=${r.acquisitionStats.soundcloudRescue}`);
+  process.stdout.write(`${label}[tracks=${analyzed}, apple=${apple}, deezer=${deezer}]`);
+  if (r.acquisitionStats?.previewSourceCounts?.soundcloud) process.stdout.write(` soundcloud=${r.acquisitionStats.previewSourceCounts.soundcloud}`);
 }
