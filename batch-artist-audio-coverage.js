@@ -21,6 +21,7 @@
 const fetch = require('node-fetch');
 const { MongoClient, ObjectId } = require('mongodb');
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 
 const SERVICE_URL = process.env.ESSENTIA_SERVICE_URL || process.env.ESSENTIA_URL || 'http://localhost:3001';
@@ -99,9 +100,11 @@ const dryRun = hasFlag('dry');
 
     try {
       const entry = { name: aName, status: 'processing', existingVectors, passes: [] };
+      let lastAnalysis = null;
       if (!soundcloudOnly && appleFirst) {
         const appleResp = await callAnalyze(aName, spotifyId, existingGenres, 'apple_primary');
         reportResult('apple', appleResp);
+        lastAnalysis = appleResp;
         const analyzed = appleResp.metadata?.totalTracksAnalyzed || 0;
         const sources = appleResp.metadata?.audioSources || {};
         entry.passes.push({ strategy: 'apple', analyzed, sources, acquisitionStats: appleResp.acquisitionStats || null });
@@ -114,6 +117,7 @@ const dryRun = hasFlag('dry');
           scTriggered++;
           const scResp = await callAnalyze(aName, spotifyId, existingGenres, 'soundcloud_primary', { forceSoundCloudTest: true });
           reportResult('soundcloud', scResp);
+          lastAnalysis = scResp || lastAnalysis;
           const analyzed = scResp.metadata?.totalTracksAnalyzed || 0;
           const sources = scResp.metadata?.audioSources || {};
           entry.passes.push({ strategy: 'soundcloud', analyzed, sources, acquisitionStats: scResp.acquisitionStats || null });
@@ -121,6 +125,25 @@ const dryRun = hasFlag('dry');
           process.stdout.write(' SC-pass-skip (coverage ok)');
         }
       }
+
+      // If we have a successful analysis result, write the artist profile back to artistGenres
+      if (lastAnalysis && lastAnalysis.success && !dryRun) {
+        try {
+          const profile = {
+            trackMatrix: lastAnalysis.trackMatrix || [],
+            genreMapping: lastAnalysis.genreMapping || null,
+            recentEvolution: lastAnalysis.recentEvolution || null,
+            averageFeatures: lastAnalysis.averageFeatures || null,
+            spectralFeatures: lastAnalysis.spectralFeatures || null,
+            metadata: lastAnalysis.metadata || {}
+          };
+          await artistCol.updateOne({ _id: artist._id }, { $set: { essentiaAudioProfile: profile, essentiaProfileBuilt: true, essentiaProfileDate: new Date(), essentiaVersion: lastAnalysis.metadata?.version || '2.0' } });
+          process.stdout.write(' UPDATED_ARTIST');
+        } catch (uerr) {
+          console.error('   ❌ Failed to update artist profile:', uerr.message);
+        }
+      }
+
       improved++;
       entry.status = 'done';
       results.push(entry);
@@ -138,9 +161,9 @@ const dryRun = hasFlag('dry');
     console.log('===BATCH_COVERAGE_JSON_START===');
     console.log(JSON.stringify(payload, null, 2));
     console.log('===BATCH_COVERAGE_JSON_END===');
-    const outPath = '/tmp/batch_coverage_results.json';
-    fs.writeFileSync(outPath, JSON.stringify(payload, null, 2));
-    console.log('Wrote results to', outPath);
+  const outPath = path.join(os.tmpdir(), 'batch_coverage_results.json');
+  fs.writeFileSync(outPath, JSON.stringify(payload, null, 2));
+  console.log('Wrote results to', outPath);
   } catch (werr) {
     console.error('Failed to write /tmp results:', werr.message);
   }
