@@ -3,7 +3,7 @@ const cors = require('cors');
 const { MongoClient } = require('mongodb');
 const fetch = require('node-fetch');
 const crypto = require('crypto');
-const { findAlternativeAudioSource, inferAudioFeaturesFromGenres, searchSoundCloudAudio } = require('./enhanced-audio-sources');
+const { findAlternativeAudioSource, inferAudioFeaturesFromGenres, searchSoundCloudAudio, findDeezerArtistTracks } = require('./enhanced-audio-sources');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -434,7 +434,7 @@ app.post('/api/analyze-artist', async (req, res) => {
   const forceSoundCloudTest = soundcloudPrimary || acquisitionStats.forceSoundCloudTest;
 
       // (EARLY) Force SoundCloud path before any Apple/Spotify recovery when testing SC directly
-  if (!previewUrl && forceSoundCloudTest && process.env.SOUNDCLOUD_CLIENT_ID) {
+  if (!previewUrl && forceSoundCloudTest && process.env.SOUNDCLOUD_CLIENT_ID && !process.env.PREFER_DEEZER) {
         try {
           const primaryArtist = track.artists[0]?.name;
           const scQueryName = track.name;
@@ -457,7 +457,7 @@ app.post('/api/analyze-artist', async (req, res) => {
       }
 
       // If still no SoundCloud result and SoundCloud is primary/test, attempt simplified & artist‑only queries
-      if (!previewUrl && (forceSoundCloudTest || soundcloudPrimary) && process.env.SOUNDCLOUD_CLIENT_ID) {
+  if (!previewUrl && (forceSoundCloudTest || soundcloudPrimary) && process.env.SOUNDCLOUD_CLIENT_ID && !process.env.PREFER_DEEZER) {
         try {
           const primaryArtist = track.artists[0]?.name;
           const simple = simplifyName(track.name);
@@ -630,7 +630,7 @@ app.post('/api/analyze-artist', async (req, res) => {
         } catch (e) {}
       }
       // (4) SoundCloud explicit (secondary after Apple in apple_primary, same position otherwise) if client ID configured
-  if (!previewUrl && process.env.SOUNDCLOUD_CLIENT_ID) {
+      if (!previewUrl && process.env.SOUNDCLOUD_CLIENT_ID && !process.env.PREFER_DEEZER) {
         try {
           acquisitionStats.soundcloudDiagnostics.attempts++;
           if (acquisitionStats.soundcloudDiagnostics.queries.length < 12) {
@@ -845,45 +845,83 @@ app.post('/api/analyze-artist', async (req, res) => {
     const genreMapping = await buildGenreMapping(trackProfiles, artistName, existingGenres);
     const recentEvolution = calculateRecentSoundEvolution(trackProfiles);
 
-    // If no tracks were analyzed but we have genre mapping from existing genres, return partial success
+    // If no tracks were analyzed, attempt a Deezer artist-level search before returning partial/genre inference
     if (trackProfiles.length === 0) {
-      // Failure classification when no audio vectors produced
-      const failSubtype = hadInitialTracks ? 'no_preview' : (existingGenres.length > 0 ? 'no_tracks_genre_only' : 'no_tracks');
-      // Partial success path if we do have genres (either existingGenres or inferred mapping)
-      if (genreMapping && genreMapping.inferredGenres && genreMapping.inferredGenres.length > 0) {
-        console.log(`✅ Partial success: No audio analysis but genres available for ${artistName}`);
-        const metadataFeatures = inferAudioFeaturesFromGenres(genreMapping.inferredGenres, artistName, 'mixed_tracks');
-        const partial = {
-          success: true,
-          partial: true,
-          failSubtype,
-          artistName,
-          spotifyId,
-          trackMatrix: [],
-          genreMapping,
-          recentEvolution: { evolution: 'insufficient_data' },
-          averageFeatures: metadataFeatures,
-          spectralFeatures: metadataFeatures,
-          metadata: {
-            totalTracksAnalyzed: 0,
-            tracksAttempted: totalAttempted,
-            topTracks: 0,
-            recentReleases: 0,
-            analysisRounds: 1,
-            successRate: 0,
-            hasGenreMapping: true,
-            hasAudioAnalysis: false,
-            hasMetadataInference: true,
-            inferenceSource: 'genre_mapping',
-            lowConfidenceAudio: true,
-            failureReasons
+      try {
+        if (!process.env.PREFER_DEEZER) {
+          console.log(`🔁 No track profiles produced; attempting Deezer artist-level search for ${artistName}`);
+          const deezerTracks = await findDeezerArtistTracks(artistName, Math.min(6, maxTracks));
+          if (deezerTracks && deezerTracks.length > 0) {
+            console.log(`🔁 Deezer artist-level returned ${deezerTracks.length} previews; analyzing with Essentia`);
+            for (let i = 0; i < deezerTracks.length; i++) {
+              const dt = deezerTracks[i];
+              try {
+                const features = await analyzeAudioWithEssentia(dt.audioUrl, { correlationId, tier: 'deezer_artist_fallback', artistName, trackName: dt.title });
+                trackProfiles.push({
+                  trackId: dt.deezerId,
+                  name: dt.title,
+                  artist: dt.artist,
+                  popularity: 0,
+                  isRecentRelease: false,
+                  albumInfo: null,
+                  previewUrl: dt.audioUrl,
+                  audioSource: 'deezer',
+                  alternativeSourceInfo: null,
+                  essentiaFeatures: features,
+                  analyzedAt: new Date(),
+                  analysisRound: 'deezer_fallback'
+                });
+                acquisitionStats.previewSourceCounts.deezer = (acquisitionStats.previewSourceCounts.deezer || 0) + 1;
+              } catch (e) {
+                console.warn(`⚠️ Failed to analyze Deezer preview ${dt.title}:`, e.message || e);
+              }
+            }
+          } else {
+            console.log(`🔁 Deezer artist-level returned no previews for ${artistName}`);
           }
-        };
-        res.setHeader('x-correlation-id', correlationId);
-        partial.metadata.spotifyTokenStatus = spotifyTokenStatus;
-        return res.json({ ...partial, spotifyTokenStatus, acquisitionStats });
+        }
+      } catch (deezerErr) {
+        console.warn('⚠️ Deezer artist-level fallback failed:', deezerErr.message || deezerErr);
       }
-      return res.json({ success: false, error: 'No tracks could be analyzed and no genres available', failSubtype, artistName, tracksAttempted: totalAttempted, failureReasons, correlationId, spotifyTokenStatus, acquisitionStats });
+
+      // After Deezer attempt, if still no trackProfiles, run original partial/failure response
+      if (trackProfiles.length === 0) {
+        const failSubtype = hadInitialTracks ? 'no_preview' : (existingGenres.length > 0 ? 'no_tracks_genre_only' : 'no_tracks');
+        if (genreMapping && genreMapping.inferredGenres && genreMapping.inferredGenres.length > 0) {
+          console.log(`✅ Partial success: No audio analysis but genres available for ${artistName}`);
+          const metadataFeatures = inferAudioFeaturesFromGenres(genreMapping.inferredGenres, artistName, 'mixed_tracks');
+          const partial = {
+            success: true,
+            partial: true,
+            failSubtype,
+            artistName,
+            spotifyId,
+            trackMatrix: [],
+            genreMapping,
+            recentEvolution: { evolution: 'insufficient_data' },
+            averageFeatures: metadataFeatures,
+            spectralFeatures: metadataFeatures,
+            metadata: {
+              totalTracksAnalyzed: 0,
+              tracksAttempted: totalAttempted,
+              topTracks: 0,
+              recentReleases: 0,
+              analysisRounds: 1,
+              successRate: 0,
+              hasGenreMapping: true,
+              hasAudioAnalysis: false,
+              hasMetadataInference: true,
+              inferenceSource: 'genre_mapping',
+              lowConfidenceAudio: true,
+              failureReasons
+            }
+          };
+          res.setHeader('x-correlation-id', correlationId);
+          partial.metadata.spotifyTokenStatus = spotifyTokenStatus;
+          return res.json({ ...partial, spotifyTokenStatus, acquisitionStats });
+        }
+        return res.json({ success: false, error: 'No tracks could be analyzed and no genres available', failSubtype, artistName, tracksAttempted: totalAttempted, failureReasons, correlationId, spotifyTokenStatus, acquisitionStats });
+      }
     }
 
   const result = {
@@ -911,6 +949,7 @@ app.post('/api/analyze-artist', async (req, res) => {
           spotify: trackProfiles.filter(t => t.audioSource === 'spotify').length,
           apple: trackProfiles.filter(t => t.audioSource === 'apple' || t.audioSource === 'apple_broad').length,
           soundcloud: trackProfiles.filter(t => t.audioSource === 'soundcloud').length,
+          deezer: trackProfiles.filter(t => t.audioSource === 'deezer').length,
           youtube: trackProfiles.filter(t => t.audioSource === 'youtube').length,
           beatport: trackProfiles.filter(t => t.audioSource === 'beatport').length,
           bandcamp: trackProfiles.filter(t => t.audioSource === 'bandcamp').length,

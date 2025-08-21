@@ -68,6 +68,40 @@ async function findYouTubeAudioUrl(artistName, trackName) {
   }
 }
 
+// Deezer artist-level search: return list of tracks with previews for a given artist
+async function findDeezerArtistTracks(artistName, limit = 10) {
+  try {
+    console.log(`🎶 Searching Deezer (artist-level) for: ${artistName} (limit=${limit})`);
+    const q = encodeURIComponent(`artist:"${artistName}"`);
+    const deezerSearchUrl = `https://api.deezer.com/search?q=${q}&limit=${limit}`;
+    const fetch = (await import('node-fetch')).default;
+    const resp = await fetch(deezerSearchUrl);
+    if (!resp.ok) {
+      console.log(`⚠️ Deezer artist search failed: ${resp.status}`);
+      return [];
+    }
+    const data = await resp.json();
+    if (!data.data || data.data.length === 0) {
+      console.log(`⚠️ No Deezer artist results for: ${artistName}`);
+      return [];
+    }
+    // Return tracks that have preview URLs
+    const tracks = data.data.filter(t => t && t.preview).map(t => ({
+      audioUrl: t.preview,
+      title: t.title,
+      artist: t.artist && t.artist.name,
+      duration: 30000,
+      source: 'deezer',
+      deezerId: t.id
+    }));
+    console.log(`✅ Deezer artist search found ${tracks.length} preview(s) for ${artistName}`);
+    return tracks;
+  } catch (error) {
+    console.log(`❌ Deezer artist search error: ${error.message}`);
+    return [];
+  }
+}
+
 async function findSoundCloudAudioUrl(artistName, trackName) {
   try {
     console.log(`🔊 Searching SoundCloud for: ${artistName} - ${trackName}`);
@@ -328,9 +362,12 @@ module.exports = {
   findSoundCloudAudioUrl,
   findBeatportPreviewUrl,
   findDeezerPreviewUrl,
+  findDeezerArtistTracks,
   findAudioUrlEnhanced,
   inferAudioFeaturesFromMetadata,
   inferFeaturesFromGenres,
   inferFeaturesFromArtistName,
   inferAudioFeaturesFromGenres
 };
+
+

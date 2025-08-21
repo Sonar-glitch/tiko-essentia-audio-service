@@ -41,6 +41,8 @@ const fromFile = getArg('fromFile');
 const appleFirst = hasFlag('appleFirst');
 const soundcloudPass = hasFlag('soundcloudPass');
 const soundcloudOnly = hasFlag('soundcloudOnly');
+const edmOnly = hasFlag('edm');
+const genreFilter = getArg('genre', null); // e.g. --genre "progressive house"
 const maxTracks = parseInt(getArg('maxTracks','10'),10);
 const minMissingVectors = parseInt(getArg('minMissing','3'),10); // threshold to trigger SC pass
 const dryRun = hasFlag('dry');
@@ -58,7 +60,18 @@ const dryRun = hasFlag('dry');
     artists = fs.readFileSync(filePath,'utf8').split(/\r?\n/).map(l => l.trim()).filter(Boolean).map(n => ({ name: n }));
   } else {
     // Load artists ordered by recent activity (fallback: popularity desc)
-    artists = await artistCol.find({}, { projection: { name:1, spotifyId:1, genres:1 } })
+    const q = {};
+    if (edmOnly) {
+      // EDM subset: match common EDM genre tokens in the genres array
+      q.genres = { $elemMatch: { $regex: /(house|techno|trance|edm|dubstep|drum|bass|progressive|melodic)/i } };
+    }
+    if (genreFilter) {
+      q.genres = q.genres || {};
+      q.genres.$elemMatch = q.genres.$elemMatch || {};
+      // exact-ish match for the requested genre
+      q.genres.$elemMatch.$regex = new RegExp(genreFilter.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'), 'i');
+    }
+    artists = await artistCol.find(q, { projection: { name:1, spotifyId:1, genres:1 } })
       .limit(limit)
       .toArray();
   }
