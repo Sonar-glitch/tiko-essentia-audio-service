@@ -3,7 +3,7 @@ const cors = require('cors');
 const { MongoClient } = require('mongodb');
 const fetch = require('node-fetch');
 const crypto = require('crypto');
-const { findAlternativeAudioSource, inferAudioFeaturesFromGenres, searchSoundCloudAudio, findDeezerArtistTracks } = require('./enhanced-audio-sources');
+  const { findAlternativeAudioSource, inferAudioFeaturesFromGenres, findDeezerArtistTracks } = require('./enhanced-audio-sources');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -13,14 +13,19 @@ const MONGODB_URI = process.env.MONGODB_URI;
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 
-// MongoDB connection
+// MongoDB connection (guarded)
 let db;
-MongoClient.connect(MONGODB_URI)
-  .then(client => {
-    console.log('📊 Connected to MongoDB');
-    db = client.db();
-  })
-  .catch(error => console.error('MongoDB connection error:', error));
+if (MONGODB_URI && typeof MONGODB_URI === 'string' && MONGODB_URI.trim().length > 0) {
+  MongoClient.connect(MONGODB_URI)
+    .then(client => {
+      console.log('📊 Connected to MongoDB');
+      db = client.db();
+    })
+    .catch(error => console.error('MongoDB connection error:', error));
+} else {
+  console.log('⚠️ MongoDB connection skipped: MONGODB_URI not set or empty. Continuing without DB.');
+  db = null;
+}
 
 // -------- Logging Helpers --------
 function log(evt, data = {}) {
@@ -214,32 +219,28 @@ app.post('/api/analyze-artist', async (req, res) => {
       initialTracks: 0,
       methods: { top: 0, recent: 0 },
       fallbacks: { search: false, appleMode: false },
-      previewSourceCounts: { spotify: 0, apple: 0, apple_broad: 0, soundcloud: 0, youtube: 0, beatport: 0, bandcamp: 0, none: 0 },
+  previewSourceCounts: { spotify: 0, apple: 0, apple_broad: 0, youtube: 0, beatport: 0, bandcamp: 0, none: 0 },
       analysisRounds: { round1: { attempted: 0, withPreview: 0 }, round2: { attempted: 0, withPreview: 0 } },
       initialSpotifyTracks: 0,
       initialSpotifyTracksWithPreview: 0,
       missingSpotifyPreviewSample: [],
       spotifyPreviewRecovered: 0,
-  soundcloudRescue: 0,
+  soundcloudRescue: 0, // kept for backward-compatibility metrics field (will remain zero)
   previewRecovery: { attempts: 0, queries: 0, hits: 0, marketsTried: [], firstHit: null, relaxedAttempts: 0, suffixStrips: 0 },
       fastMode,
   previewRecoveryLimited: false,
   spotifyPreviewSuppressed: 0,
   spotifySuppressedRestored: 0,
     };
-  // New: deeper SoundCloud diagnostics for soundcloud_primary / forceSoundCloudTest flows
-  acquisitionStats.soundcloudDiagnostics = { attempts: 0, hits: 0, queries: [] };
+  // SoundCloud removed - diagnostics deprecated
     // Preview acquisition strategy (default now apple_primary)
   // Determine preview strategy. If Spotify token missing and client did not force something else, prefer apple_primary.
   const previewStrategy = (incomingPreviewStrategy || (!spotifyToken ? 'apple_primary' : 'apple_primary')).toLowerCase();
   acquisitionStats.previewStrategy = previewStrategy;
   acquisitionStats.appleOverrideSpotify = 0;
   acquisitionStats.spotifyRecoveryDisabled = false;
-  // New: SoundCloud primary / forced test mode
-  const forceSoundCloudTest = previewStrategy === 'soundcloud_primary' || !!req.body.forceSoundCloudTest;
-  acquisitionStats.soundcloudPrimary = previewStrategy === 'soundcloud_primary';
-  acquisitionStats.forceSoundCloudTest = !!req.body.forceSoundCloudTest;
-  acquisitionStats.forceSkipApple = forceSoundCloudTest; // explicit flag to indicate Apple was intentionally skipped
+  // SoundCloud removed: forceSoundCloudTest and related flags ignored
+  acquisitionStats.forceSkipApple = false;
 
     // Method 1: Get top tracks using artist ID (if provided and we have Spotify token)
   if (spotifyId && spotifyToken) {
@@ -392,19 +393,7 @@ app.post('/api/analyze-artist', async (req, res) => {
       const originalApplePreview = (track.preview_url && (track.applePreview || /mzstatic|audio-ssl\.itunes\.apple\.com/i.test(track.preview_url))) ? track.preview_url : null;
       let previewUrl = track.preview_url;
       let audioSource = previewUrl ? (originalApplePreview ? 'apple' : 'spotify') : null;
-      // In soundcloud_primary we ONLY suppress Spotify previews (keep Apple unless forceSoundCloudTest explicitly set)
-      let originalSpotifyPreview = null;
-      if (previewUrl && (previewStrategy === 'soundcloud_primary') && audioSource === 'spotify') {
-        originalSpotifyPreview = previewUrl; // remember so we can restore if SC fails
-        previewUrl = null;
-        audioSource = null;
-        acquisitionStats.spotifyPreviewSuppressed++;
-      }
-      // If explicitly forcing SoundCloud test, suppress any existing preview (even Apple) to measure rescue capability
-      if (previewUrl && acquisitionStats.forceSoundCloudTest) {
-        previewUrl = null;
-        audioSource = null;
-      }
+  // SoundCloud removed: preview suppression paths deprecated
       let alternativeSourceInfo = null;
       // Determine per-track recovery limit
       const perTrackRecoveryLimit = maxPreviewRecoveryAttempts
@@ -430,73 +419,10 @@ app.post('/api/analyze-artist', async (req, res) => {
         return base.replace(/\s{2,}/g,' ').trim();
       }
   const useApplePrimary = previewStrategy === 'apple_primary';
-  const soundcloudPrimary = previewStrategy === 'soundcloud_primary';
-  const forceSoundCloudTest = soundcloudPrimary || acquisitionStats.forceSoundCloudTest;
+  const soundcloudPrimary = false; // SoundCloud removed
+  const forceSoundCloudTest = acquisitionStats.forceSoundCloudTest || false;
 
-      // (EARLY) Force SoundCloud path before any Apple/Spotify recovery when testing SC directly
-  if (!previewUrl && forceSoundCloudTest && process.env.SOUNDCLOUD_CLIENT_ID && !process.env.PREFER_DEEZER) {
-        try {
-          const primaryArtist = track.artists[0]?.name;
-          const scQueryName = track.name;
-          acquisitionStats.soundcloudDiagnostics.attempts++;
-          if (acquisitionStats.soundcloudDiagnostics.queries.length < 12) {
-            const q = `${primaryArtist} :: ${scQueryName}`.replace(/\s+/g,' ').trim();
-            if (!acquisitionStats.soundcloudDiagnostics.queries.includes(q)) acquisitionStats.soundcloudDiagnostics.queries.push(q);
-          }
-          const scEarly = await searchSoundCloudAudio(primaryArtist, scQueryName);
-          if (scEarly && (scEarly.streamUrl || scEarly.previewUrl)) {
-            previewUrl = scEarly.streamUrl || scEarly.previewUrl;
-            audioSource = 'soundcloud';
-            alternativeSourceInfo = { source: 'soundcloud', confidence: scEarly.confidence || 0.85, forced: true };
-            acquisitionStats.soundcloudRescue++;
-            acquisitionStats.soundcloudDiagnostics.hits++;
-          }
-        } catch (e) {
-          // ignore – continue to normal flow
-        }
-      }
-
-      // If still no SoundCloud result and SoundCloud is primary/test, attempt simplified & artist‑only queries
-  if (!previewUrl && (forceSoundCloudTest || soundcloudPrimary) && process.env.SOUNDCLOUD_CLIENT_ID && !process.env.PREFER_DEEZER) {
-        try {
-          const primaryArtist = track.artists[0]?.name;
-          const simple = simplifyName(track.name);
-          // 1) Simplified track name search (if changed)
-          if (simple && simple !== track.name) {
-            acquisitionStats.soundcloudDiagnostics.attempts++;
-            if (acquisitionStats.soundcloudDiagnostics.queries.length < 12) {
-              const q = `${primaryArtist} :: ${simple}`.replace(/\s+/g,' ').trim();
-              if (!acquisitionStats.soundcloudDiagnostics.queries.includes(q)) acquisitionStats.soundcloudDiagnostics.queries.push(q);
-            }
-            const scSimple = await searchSoundCloudAudio(primaryArtist, simple);
-            if (!previewUrl && scSimple && (scSimple.streamUrl || scSimple.previewUrl)) {
-              previewUrl = scSimple.streamUrl || scSimple.previewUrl;
-              audioSource = 'soundcloud';
-              alternativeSourceInfo = { source: 'soundcloud', confidence: scSimple.confidence || 0.8, simplified: true };
-              acquisitionStats.soundcloudRescue++;
-              acquisitionStats.soundcloudDiagnostics.hits++;
-            }
-          }
-          // 2) Artist-only query (discover any top track if specific title fails)
-          if (!previewUrl) {
-            acquisitionStats.soundcloudDiagnostics.attempts++;
-            if (acquisitionStats.soundcloudDiagnostics.queries.length < 12) {
-              const q = `${primaryArtist}`.replace(/\s+/g,' ').trim();
-              if (!acquisitionStats.soundcloudDiagnostics.queries.includes(q)) acquisitionStats.soundcloudDiagnostics.queries.push(q);
-            }
-            const scArtistOnly = await searchSoundCloudAudio(primaryArtist, '');
-            if (scArtistOnly && (scArtistOnly.streamUrl || scArtistOnly.previewUrl)) {
-              previewUrl = scArtistOnly.streamUrl || scArtistOnly.previewUrl;
-              audioSource = 'soundcloud';
-              alternativeSourceInfo = { source: 'soundcloud', confidence: scArtistOnly.confidence || 0.7, artistOnly: true };
-              acquisitionStats.soundcloudRescue++;
-              acquisitionStats.soundcloudDiagnostics.hits++;
-            }
-          }
-        } catch (e) {
-          // continue silently
-        }
-      }
+  // SoundCloud lookups removed - skip this path
 
       // APPLE PRIMARY STRATEGY: Attempt Apple sources before any Spotify recovery.
   if (useApplePrimary && !forceSoundCloudTest) { // skip Apple entirely if forcing SC test or SC primary
@@ -612,8 +538,8 @@ app.post('/api/analyze-artist', async (req, res) => {
           // silent; recovery optional
         }
       }
-  if ((useApplePrimary || forceSoundCloudTest || soundcloudPrimary) && !previewUrl) {
-        acquisitionStats.spotifyRecoveryDisabled = true; // recorded if we skipped the spotify recovery block
+  if (useApplePrimary && !previewUrl) {
+        acquisitionStats.spotifyRecoveryDisabled = false;
       }
       // (2) Apple exact (balanced strategy only)
   if (!previewUrl && !useApplePrimary && !forceSoundCloudTest && !soundcloudPrimary) {
@@ -630,25 +556,7 @@ app.post('/api/analyze-artist', async (req, res) => {
         } catch (e) {}
       }
       // (4) SoundCloud explicit (secondary after Apple in apple_primary, same position otherwise) if client ID configured
-      if (!previewUrl && process.env.SOUNDCLOUD_CLIENT_ID && !process.env.PREFER_DEEZER) {
-        try {
-          acquisitionStats.soundcloudDiagnostics.attempts++;
-          if (acquisitionStats.soundcloudDiagnostics.queries.length < 12) {
-            const q = `${track.artists[0]?.name} :: ${track.name}`.replace(/\s+/g,' ').trim();
-            if (!acquisitionStats.soundcloudDiagnostics.queries.includes(q)) acquisitionStats.soundcloudDiagnostics.queries.push(q);
-          }
-          const sc = await searchSoundCloudAudio(track.artists[0]?.name, track.name);
-          if (sc && (sc.streamUrl || sc.previewUrl)) {
-            previewUrl = sc.streamUrl || sc.previewUrl;
-            audioSource = 'soundcloud';
-            alternativeSourceInfo = { source: 'soundcloud', confidence: sc.confidence || 0.8 };
-            acquisitionStats.soundcloudRescue++;
-            acquisitionStats.soundcloudDiagnostics.hits++;
-          }
-        } catch (e) {
-          // ignore
-        }
-      }
+  // SoundCloud lookup removed
       // (5) Alternative multi-source aggregator (Beatport, YouTube, Bandcamp, etc.)
       if (!previewUrl) {
         try {
@@ -669,17 +577,12 @@ app.post('/api/analyze-artist', async (req, res) => {
         previewUrl = track.preview_url;
         audioSource = 'spotify';
       }
-      // NEW: In soundcloud_primary (or forced SC test) if all SC attempts failed, restore original Apple preview (if any) so we still analyze audio
-      if (!previewUrl && (soundcloudPrimary || forceSoundCloudTest) && originalApplePreview) {
+  // SoundCloud removed: previously we restored Apple preview after forced SoundCloud attempts
+  if (!previewUrl && forceSoundCloudTest && originalApplePreview) {
         previewUrl = originalApplePreview;
         audioSource = 'apple';
       }
-      // If still nothing AND we had suppressed a Spotify preview (soundcloud_primary without force test), restore it
-      if (!previewUrl && soundcloudPrimary && !forceSoundCloudTest && originalSpotifyPreview) {
-        previewUrl = originalSpotifyPreview;
-        audioSource = 'spotify';
-        acquisitionStats.spotifySuppressedRestored++;
-      }
+  // SoundCloud removed: no suppressed Spotify preview restoration path
       return { previewUrl, audioSource, alternativeSourceInfo };
     }
 

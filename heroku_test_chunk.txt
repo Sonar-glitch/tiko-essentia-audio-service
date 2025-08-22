@@ -1,0 +1,1315 @@
+Loaded 20 artists (limit=20).
+
+👉 686f4798ffa8f465a2d5caec ... apple[tracks=5, apple=5, sc=0]
+👉 686f572fffa8f465a2d5cafa ... apple[tracks=5, apple=5, sc=0]
+👉 686f572fffa8f465a2d5cafb ... apple[tracks=5, apple=5, sc=0]
+👉 686f572fffa8f465a2d5cafc ... apple[tracks=5, apple=5, sc=0]
+👉 686f572fffa8f465a2d5cafd ... apple[tracks=5, apple=5, sc=0]
+👉 686f572fffa8f465a2d5cafe ... apple[tracks=5, apple=5, sc=0]
+👉 686f572fffa8f465a2d5caff ... apple[tracks=5, apple=5, sc=0]
+👉 686f572fffa8f465a2d5cb00 ... apple[tracks=5, apple=5, sc=0]
+👉 686f572fffa8f465a2d5cb01 ... apple[tracks=5, apple=5, sc=0]
+👉 686f572fffa8f465a2d5cb02 ... apple[tracks=5, apple=5, sc=0]
+👉 686f572fffa8f465a2d5cb03 ... apple[tracks=5, apple=5, sc=0]
+👉 686f572fffa8f465a2d5cb04 ... apple[tracks=4, apple=4, sc=0]
+👉 686f572fffa8f465a2d5cb05 ... apple[tracks=2, apple=2, sc=0]
+👉 686f572fffa8f465a2d5cb06 ... 
+   ❌ Error processing 686f572fffa8f465a2d5cb06: analyze-artist failed 500
+
+👉 686f572fffa8f465a2d5cb07 ... 
+   ❌ Error processing 686f572fffa8f465a2d5cb07: analyze-artist failed 500
+
+👉 686f572fffa8f465a2d5cb08 ... 
+   ❌ Error processing 686f572fffa8f465a2d5cb08: analyze-artist failed 500
+
+👉 686f572fffa8f465a2d5cb09 ... 
+   ❌ Error processing 686f572fffa8f465a2d5cb09: analyze-artist failed 500
+
+👉 686f572fffa8f465a2d5cb0a ... 
+   ❌ Error processing 686f572fffa8f465a2d5cb0a: analyze-artist failed 500
+
+👉 686f572fffa8f465a2d5cb0b ... apple[tracks=0, apple=0, sc=0]
+👉 686f572fffa8f465a2d5cb0c ... 
+   ❌ Error processing 686f572fffa8f465a2d5cb0c: analyze-artist failed 500
+
+
+===== SUMMARY =====
+{ total: 20, improved: 14, skipped: 0, scTriggered: 0, errors: 6 }
+===BATCH_COVERAGE_JSON_START===
+{
+  "total": 20,
+  "improved": 14,
+  "skipped": 0,
+  "scTriggered": 0,
+  "errors": 6,
+  "results": [
+    {
+      "name": "686f4798ffa8f465a2d5caec",
+      "status": "done",
+      "existingVectors": 0,
+      "passes": [
+        {
+          "strategy": "apple",
+          "analyzed": 5,
+          "sources": {
+            "spotify": 0,
+            "apple": 5,
+            "soundcloud": 0,
+            "youtube": 0,
+            "beatport": 0,
+            "bandcamp": 0,
+            "alternativeSourcesUsed": 0
+          },
+          "acquisitionStats": {
+            "spotifyTokenStatus": "acquired",
+            "initialTracks": 22,
+            "methods": {
+              "top": 10,
+              "recent": 12
+            },
+            "fallbacks": {
+              "search": false,
+              "appleMode": false
+            },
+            "previewSourceCounts": {
+              "spotify": 0,
+              "apple": 5,
+              "apple_broad": 0,
+              "soundcloud": 0,
+              "youtube": 0,
+              "beatport": 0,
+              "bandcamp": 0,
+              "none": 0
+            },
+            "analysisRounds": {
+              "round1": {
+                "attempted": 5,
+                "withPreview": 5
+              },
+              "round2": {
+                "attempted": 0,
+                "withPreview": 0
+              }
+            },
+            "initialSpotifyTracks": 22,
+            "initialSpotifyTracksWithPreview": 0,
+            "missingSpotifyPreviewSample": [
+              "6quGF3Kvzd5WYEEuCmvCe1",
+              "0agQ9vIV7NP4dntGKLcCXO",
+              "74y1VgzL668hynrvA59WQB",
+              "63HwAAXuSV2tzIUPoHOwZa",
+              "6ho0GyrWZN3mhi9zVRW7xi"
+            ],
+            "spotifyPreviewRecovered": 0,
+            "soundcloudRescue": 0,
+            "previewRecovery": {
+              "attempts": 0,
+              "queries": 0,
+              "hits": 0,
+              "marketsTried": [],
+              "firstHit": null,
+              "relaxedAttempts": 0,
+              "suffixStrips": 0
+            },
+            "fastMode": true,
+            "previewRecoveryLimited": false,
+            "spotifyPreviewSuppressed": 0,
+            "spotifySuppressedRestored": 0,
+            "soundcloudDiagnostics": {
+              "attempts": 0,
+              "hits": 0,
+              "queries": []
+            },
+            "previewStrategy": "apple_primary",
+            "appleOverrideSpotify": 0,
+            "spotifyRecoveryDisabled": false,
+            "soundcloudPrimary": false,
+            "forceSoundCloudTest": false,
+            "forceSkipApple": false,
+            "spotifyPreviewCoveragePercent": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "686f572fffa8f465a2d5cafa",
+      "status": "done",
+      "existingVectors": 0,
+      "passes": [
+        {
+          "strategy": "apple",
+          "analyzed": 5,
+          "sources": {
+            "spotify": 0,
+            "apple": 5,
+            "soundcloud": 0,
+            "youtube": 0,
+            "beatport": 0,
+            "bandcamp": 0,
+            "alternativeSourcesUsed": 0
+          },
+          "acquisitionStats": {
+            "spotifyTokenStatus": "acquired",
+            "initialTracks": 63,
+            "methods": {
+              "top": 10,
+              "recent": 53
+            },
+            "fallbacks": {
+              "search": false,
+              "appleMode": false
+            },
+            "previewSourceCounts": {
+              "spotify": 0,
+              "apple": 5,
+              "apple_broad": 0,
+              "soundcloud": 0,
+              "youtube": 0,
+              "beatport": 0,
+              "bandcamp": 0,
+              "none": 0
+            },
+            "analysisRounds": {
+              "round1": {
+                "attempted": 5,
+                "withPreview": 5
+              },
+              "round2": {
+                "attempted": 0,
+                "withPreview": 0
+              }
+            },
+            "initialSpotifyTracks": 63,
+            "initialSpotifyTracksWithPreview": 0,
+            "missingSpotifyPreviewSample": [
+              "652jfnOkcgGuELRmIulecC",
+              "30F9axJoIHUMLRnbHzlXSX",
+              "4vZRbvqKf6jtP4LeLcLLBS",
+              "6xl5vg5rhmbGI7kNML1IP4",
+              "19PNwoHLzMO5oCHxHWqMqq"
+            ],
+            "spotifyPreviewRecovered": 0,
+            "soundcloudRescue": 0,
+            "previewRecovery": {
+              "attempts": 0,
+              "queries": 0,
+              "hits": 0,
+              "marketsTried": [],
+              "firstHit": null,
+              "relaxedAttempts": 0,
+              "suffixStrips": 0
+            },
+            "fastMode": true,
+            "previewRecoveryLimited": false,
+            "spotifyPreviewSuppressed": 0,
+            "spotifySuppressedRestored": 0,
+            "soundcloudDiagnostics": {
+              "attempts": 0,
+              "hits": 0,
+              "queries": []
+            },
+            "previewStrategy": "apple_primary",
+            "appleOverrideSpotify": 0,
+            "spotifyRecoveryDisabled": false,
+            "soundcloudPrimary": false,
+            "forceSoundCloudTest": false,
+            "forceSkipApple": false,
+            "spotifyPreviewCoveragePercent": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "686f572fffa8f465a2d5cafb",
+      "status": "done",
+      "existingVectors": 0,
+      "passes": [
+        {
+          "strategy": "apple",
+          "analyzed": 5,
+          "sources": {
+            "spotify": 0,
+            "apple": 5,
+            "soundcloud": 0,
+            "youtube": 0,
+            "beatport": 0,
+            "bandcamp": 0,
+            "alternativeSourcesUsed": 0
+          },
+          "acquisitionStats": {
+            "spotifyTokenStatus": "acquired",
+            "initialTracks": 60,
+            "methods": {
+              "top": 10,
+              "recent": 50
+            },
+            "fallbacks": {
+              "search": false,
+              "appleMode": false
+            },
+            "previewSourceCounts": {
+              "spotify": 0,
+              "apple": 5,
+              "apple_broad": 0,
+              "soundcloud": 0,
+              "youtube": 0,
+              "beatport": 0,
+              "bandcamp": 0,
+              "none": 0
+            },
+            "analysisRounds": {
+              "round1": {
+                "attempted": 5,
+                "withPreview": 5
+              },
+              "round2": {
+                "attempted": 0,
+                "withPreview": 0
+              }
+            },
+            "initialSpotifyTracks": 60,
+            "initialSpotifyTracksWithPreview": 0,
+            "missingSpotifyPreviewSample": [
+              "0JbSghVDghtFEurrSO8JrC",
+              "03fT3OHB9KyMtGMt2zwqCT",
+              "7c1KTn1z8Gw8ouYdcF4qaG",
+              "5HGibWoxnkYSkl6mHmAlOE",
+              "2opQESZb7JsRKCvWMBPeuv"
+            ],
+            "spotifyPreviewRecovered": 0,
+            "soundcloudRescue": 0,
+            "previewRecovery": {
+              "attempts": 0,
+              "queries": 0,
+              "hits": 0,
+              "marketsTried": [],
+              "firstHit": null,
+              "relaxedAttempts": 0,
+              "suffixStrips": 0
+            },
+            "fastMode": true,
+            "previewRecoveryLimited": false,
+            "spotifyPreviewSuppressed": 0,
+            "spotifySuppressedRestored": 0,
+            "soundcloudDiagnostics": {
+              "attempts": 0,
+              "hits": 0,
+              "queries": []
+            },
+            "previewStrategy": "apple_primary",
+            "appleOverrideSpotify": 0,
+            "spotifyRecoveryDisabled": false,
+            "soundcloudPrimary": false,
+            "forceSoundCloudTest": false,
+            "forceSkipApple": false,
+            "spotifyPreviewCoveragePercent": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "686f572fffa8f465a2d5cafc",
+      "status": "done",
+      "existingVectors": 0,
+      "passes": [
+        {
+          "strategy": "apple",
+          "analyzed": 5,
+          "sources": {
+            "spotify": 0,
+            "apple": 5,
+            "soundcloud": 0,
+            "youtube": 0,
+            "beatport": 0,
+            "bandcamp": 0,
+            "alternativeSourcesUsed": 0
+          },
+          "acquisitionStats": {
+            "spotifyTokenStatus": "acquired",
+            "initialTracks": 37,
+            "methods": {
+              "top": 10,
+              "recent": 27
+            },
+            "fallbacks": {
+              "search": false,
+              "appleMode": false
+            },
+            "previewSourceCounts": {
+              "spotify": 0,
+              "apple": 5,
+              "apple_broad": 0,
+              "soundcloud": 0,
+              "youtube": 0,
+              "beatport": 0,
+              "bandcamp": 0,
+              "none": 0
+            },
+            "analysisRounds": {
+              "round1": {
+                "attempted": 5,
+                "withPreview": 5
+              },
+              "round2": {
+                "attempted": 0,
+                "withPreview": 0
+              }
+            },
+            "initialSpotifyTracks": 37,
+            "initialSpotifyTracksWithPreview": 0,
+            "missingSpotifyPreviewSample": [
+              "3VpxEo6vMpi4rQ6t2WVVkK",
+              "0FZ8ULT8WR1xwCIzjVRxnw",
+              "0yv5yFvvsv5eFyVQOulWEx",
+              "4ezalcKN0KnYuZiEw2jFgc",
+              "3zFsJdVCu29em7VUB3Ujqp"
+            ],
+            "spotifyPreviewRecovered": 0,
+            "soundcloudRescue": 0,
+            "previewRecovery": {
+              "attempts": 0,
+              "queries": 0,
+              "hits": 0,
+              "marketsTried": [],
+              "firstHit": null,
+              "relaxedAttempts": 0,
+              "suffixStrips": 0
+            },
+            "fastMode": true,
+            "previewRecoveryLimited": false,
+            "spotifyPreviewSuppressed": 0,
+            "spotifySuppressedRestored": 0,
+            "soundcloudDiagnostics": {
+              "attempts": 0,
+              "hits": 0,
+              "queries": []
+            },
+            "previewStrategy": "apple_primary",
+            "appleOverrideSpotify": 0,
+            "spotifyRecoveryDisabled": false,
+            "soundcloudPrimary": false,
+            "forceSoundCloudTest": false,
+            "forceSkipApple": false,
+            "spotifyPreviewCoveragePercent": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "686f572fffa8f465a2d5cafd",
+      "status": "done",
+      "existingVectors": 0,
+      "passes": [
+        {
+          "strategy": "apple",
+          "analyzed": 5,
+          "sources": {
+            "spotify": 0,
+            "apple": 5,
+            "soundcloud": 0,
+            "youtube": 0,
+            "beatport": 0,
+            "bandcamp": 0,
+            "alternativeSourcesUsed": 0
+          },
+          "acquisitionStats": {
+            "spotifyTokenStatus": "acquired",
+            "initialTracks": 26,
+            "methods": {
+              "top": 10,
+              "recent": 16
+            },
+            "fallbacks": {
+              "search": false,
+              "appleMode": false
+            },
+            "previewSourceCounts": {
+              "spotify": 0,
+              "apple": 5,
+              "apple_broad": 0,
+              "soundcloud": 0,
+              "youtube": 0,
+              "beatport": 0,
+              "bandcamp": 0,
+              "none": 0
+            },
+            "analysisRounds": {
+              "round1": {
+                "attempted": 5,
+                "withPreview": 5
+              },
+              "round2": {
+                "attempted": 0,
+                "withPreview": 0
+              }
+            },
+            "initialSpotifyTracks": 26,
+            "initialSpotifyTracksWithPreview": 0,
+            "missingSpotifyPreviewSample": [
+              "3banchOoe2giyRK0jaO1c7",
+              "4mNeio4yZjEExmcM2I26w1",
+              "0EtKPjxo5ArYJoGCptW04J",
+              "6ugyqxHWS5zpfhGXp928Ef",
+              "4m1GJzAMtgAEKcfaDAiaqZ"
+            ],
+            "spotifyPreviewRecovered": 0,
+            "soundcloudRescue": 0,
+            "previewRecovery": {
+              "attempts": 0,
+              "queries": 0,
+              "hits": 0,
+              "marketsTried": [],
+              "firstHit": null,
+              "relaxedAttempts": 0,
+              "suffixStrips": 0
+            },
+            "fastMode": true,
+            "previewRecoveryLimited": false,
+            "spotifyPreviewSuppressed": 0,
+            "spotifySuppressedRestored": 0,
+            "soundcloudDiagnostics": {
+              "attempts": 0,
+              "hits": 0,
+              "queries": []
+            },
+            "previewStrategy": "apple_primary",
+            "appleOverrideSpotify": 0,
+            "spotifyRecoveryDisabled": false,
+            "soundcloudPrimary": false,
+            "forceSoundCloudTest": false,
+            "forceSkipApple": false,
+            "spotifyPreviewCoveragePercent": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "686f572fffa8f465a2d5cafe",
+      "status": "done",
+      "existingVectors": 0,
+      "passes": [
+        {
+          "strategy": "apple",
+          "analyzed": 5,
+          "sources": {
+            "spotify": 0,
+            "apple": 5,
+            "soundcloud": 0,
+            "youtube": 0,
+            "beatport": 0,
+            "bandcamp": 0,
+            "alternativeSourcesUsed": 0
+          },
+          "acquisitionStats": {
+            "spotifyTokenStatus": "acquired",
+            "initialTracks": 53,
+            "methods": {
+              "top": 10,
+              "recent": 43
+            },
+            "fallbacks": {
+              "search": false,
+              "appleMode": false
+            },
+            "previewSourceCounts": {
+              "spotify": 0,
+              "apple": 5,
+              "apple_broad": 0,
+              "soundcloud": 0,
+              "youtube": 0,
+              "beatport": 0,
+              "bandcamp": 0,
+              "none": 0
+            },
+            "analysisRounds": {
+              "round1": {
+                "attempted": 5,
+                "withPreview": 5
+              },
+              "round2": {
+                "attempted": 0,
+                "withPreview": 0
+              }
+            },
+            "initialSpotifyTracks": 53,
+            "initialSpotifyTracksWithPreview": 0,
+            "missingSpotifyPreviewSample": [
+              "3AJwUDP919kvQ9QcozQPxg",
+              "7D0RhFcb3CrfPuTJ0obrod",
+              "1mea3bSkSGXuIRvnydlB5b",
+              "6RUKPb4LETWmmr3iAEQktW",
+              "75JFxkI2RXiU7L9VXzMkle"
+            ],
+            "spotifyPreviewRecovered": 0,
+            "soundcloudRescue": 0,
+            "previewRecovery": {
+              "attempts": 0,
+              "queries": 0,
+              "hits": 0,
+              "marketsTried": [],
+              "firstHit": null,
+              "relaxedAttempts": 0,
+              "suffixStrips": 0
+            },
+            "fastMode": true,
+            "previewRecoveryLimited": false,
+            "spotifyPreviewSuppressed": 0,
+            "spotifySuppressedRestored": 0,
+            "soundcloudDiagnostics": {
+              "attempts": 0,
+              "hits": 0,
+              "queries": []
+            },
+            "previewStrategy": "apple_primary",
+            "appleOverrideSpotify": 0,
+            "spotifyRecoveryDisabled": false,
+            "soundcloudPrimary": false,
+            "forceSoundCloudTest": false,
+            "forceSkipApple": false,
+            "spotifyPreviewCoveragePercent": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "686f572fffa8f465a2d5caff",
+      "status": "done",
+      "existingVectors": 0,
+      "passes": [
+        {
+          "strategy": "apple",
+          "analyzed": 5,
+          "sources": {
+            "spotify": 0,
+            "apple": 5,
+            "soundcloud": 0,
+            "youtube": 0,
+            "beatport": 0,
+            "bandcamp": 0,
+            "alternativeSourcesUsed": 0
+          },
+          "acquisitionStats": {
+            "spotifyTokenStatus": "acquired",
+            "initialTracks": 10,
+            "methods": {
+              "top": 10,
+              "recent": 0
+            },
+            "fallbacks": {
+              "search": false,
+              "appleMode": false
+            },
+            "previewSourceCounts": {
+              "spotify": 0,
+              "apple": 5,
+              "apple_broad": 0,
+              "soundcloud": 0,
+              "youtube": 0,
+              "beatport": 0,
+              "bandcamp": 0,
+              "none": 0
+            },
+            "analysisRounds": {
+              "round1": {
+                "attempted": 5,
+                "withPreview": 5
+              },
+              "round2": {
+                "attempted": 0,
+                "withPreview": 0
+              }
+            },
+            "initialSpotifyTracks": 10,
+            "initialSpotifyTracksWithPreview": 0,
+            "missingSpotifyPreviewSample": [
+              "5fxfwjQ1OmbnkOlg39HsSO",
+              "1vqw24tqUeqKtTA8fiPccF",
+              "61Ya5uCoIuNSMaj4HY0wPQ",
+              "3Rj6b3joMBRcCd9xMZdtjW",
+              "1V69q6fPb63UK05eKoOFUI"
+            ],
+            "spotifyPreviewRecovered": 0,
+            "soundcloudRescue": 0,
+            "previewRecovery": {
+              "attempts": 0,
+              "queries": 0,
+              "hits": 0,
+              "marketsTried": [],
+              "firstHit": null,
+              "relaxedAttempts": 0,
+              "suffixStrips": 0
+            },
+            "fastMode": true,
+            "previewRecoveryLimited": false,
+            "spotifyPreviewSuppressed": 0,
+            "spotifySuppressedRestored": 0,
+            "soundcloudDiagnostics": {
+              "attempts": 0,
+              "hits": 0,
+              "queries": []
+            },
+            "previewStrategy": "apple_primary",
+            "appleOverrideSpotify": 0,
+            "spotifyRecoveryDisabled": false,
+            "soundcloudPrimary": false,
+            "forceSoundCloudTest": false,
+            "forceSkipApple": false,
+            "spotifyPreviewCoveragePercent": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "686f572fffa8f465a2d5cb00",
+      "status": "done",
+      "existingVectors": 0,
+      "passes": [
+        {
+          "strategy": "apple",
+          "analyzed": 5,
+          "sources": {
+            "spotify": 0,
+            "apple": 5,
+            "soundcloud": 0,
+            "youtube": 0,
+            "beatport": 0,
+            "bandcamp": 0,
+            "alternativeSourcesUsed": 0
+          },
+          "acquisitionStats": {
+            "spotifyTokenStatus": "acquired",
+            "initialTracks": 56,
+            "methods": {
+              "top": 10,
+              "recent": 46
+            },
+            "fallbacks": {
+              "search": false,
+              "appleMode": false
+            },
+            "previewSourceCounts": {
+              "spotify": 0,
+              "apple": 5,
+              "apple_broad": 0,
+              "soundcloud": 0,
+              "youtube": 0,
+              "beatport": 0,
+              "bandcamp": 0,
+              "none": 0
+            },
+            "analysisRounds": {
+              "round1": {
+                "attempted": 5,
+                "withPreview": 5
+              },
+              "round2": {
+                "attempted": 0,
+                "withPreview": 0
+              }
+            },
+            "initialSpotifyTracks": 56,
+            "initialSpotifyTracksWithPreview": 0,
+            "missingSpotifyPreviewSample": [
+              "0dGqP4VickYjtIaB5VOt4H",
+              "4cxMGhkinTocPSVVKWIw0d",
+              "3pndPhlQWjuSoXhcIIdBjv",
+              "6qcuRcbz8DCLG6nG4or8Uo",
+              "26OhjtaTamFocE08t83ml6"
+            ],
+            "spotifyPreviewRecovered": 0,
+            "soundcloudRescue": 0,
+            "previewRecovery": {
+              "attempts": 0,
+              "queries": 0,
+              "hits": 0,
+              "marketsTried": [],
+              "firstHit": null,
+              "relaxedAttempts": 0,
+              "suffixStrips": 0
+            },
+            "fastMode": true,
+            "previewRecoveryLimited": false,
+            "spotifyPreviewSuppressed": 0,
+            "spotifySuppressedRestored": 0,
+            "soundcloudDiagnostics": {
+              "attempts": 0,
+              "hits": 0,
+              "queries": []
+            },
+            "previewStrategy": "apple_primary",
+            "appleOverrideSpotify": 0,
+            "spotifyRecoveryDisabled": false,
+            "soundcloudPrimary": false,
+            "forceSoundCloudTest": false,
+            "forceSkipApple": false,
+            "spotifyPreviewCoveragePercent": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "686f572fffa8f465a2d5cb01",
+      "status": "done",
+      "existingVectors": 0,
+      "passes": [
+        {
+          "strategy": "apple",
+          "analyzed": 5,
+          "sources": {
+            "spotify": 0,
+            "apple": 5,
+            "soundcloud": 0,
+            "youtube": 0,
+            "beatport": 0,
+            "bandcamp": 0,
+            "alternativeSourcesUsed": 0
+          },
+          "acquisitionStats": {
+            "spotifyTokenStatus": "acquired",
+            "initialTracks": 32,
+            "methods": {
+              "top": 10,
+              "recent": 22
+            },
+            "fallbacks": {
+              "search": false,
+              "appleMode": false
+            },
+            "previewSourceCounts": {
+              "spotify": 0,
+              "apple": 5,
+              "apple_broad": 0,
+              "soundcloud": 0,
+              "youtube": 0,
+              "beatport": 0,
+              "bandcamp": 0,
+              "none": 0
+            },
+            "analysisRounds": {
+              "round1": {
+                "attempted": 5,
+                "withPreview": 5
+              },
+              "round2": {
+                "attempted": 0,
+                "withPreview": 0
+              }
+            },
+            "initialSpotifyTracks": 32,
+            "initialSpotifyTracksWithPreview": 0,
+            "missingSpotifyPreviewSample": [
+              "20Ahyv93KKjMuDHAVy2yjr",
+              "3LnUpZwTpBYL6ph61CGJf9",
+              "7w4uUETSzQHNItfRI8w2MA",
+              "43NeZM2TbrQr6djoAnDyVo",
+              "6DHPaizkhWLCUxDgrYZI0f"
+            ],
+            "spotifyPreviewRecovered": 0,
+            "soundcloudRescue": 0,
+            "previewRecovery": {
+              "attempts": 0,
+              "queries": 0,
+              "hits": 0,
+              "marketsTried": [],
+              "firstHit": null,
+              "relaxedAttempts": 0,
+              "suffixStrips": 0
+            },
+            "fastMode": true,
+            "previewRecoveryLimited": false,
+            "spotifyPreviewSuppressed": 0,
+            "spotifySuppressedRestored": 0,
+            "soundcloudDiagnostics": {
+              "attempts": 0,
+              "hits": 0,
+              "queries": []
+            },
+            "previewStrategy": "apple_primary",
+            "appleOverrideSpotify": 0,
+            "spotifyRecoveryDisabled": false,
+            "soundcloudPrimary": false,
+            "forceSoundCloudTest": false,
+            "forceSkipApple": false,
+            "spotifyPreviewCoveragePercent": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "686f572fffa8f465a2d5cb02",
+      "status": "done",
+      "existingVectors": 0,
+      "passes": [
+        {
+          "strategy": "apple",
+          "analyzed": 5,
+          "sources": {
+            "spotify": 0,
+            "apple": 5,
+            "soundcloud": 0,
+            "youtube": 0,
+            "beatport": 0,
+            "bandcamp": 0,
+            "alternativeSourcesUsed": 0
+          },
+          "acquisitionStats": {
+            "spotifyTokenStatus": "acquired",
+            "initialTracks": 35,
+            "methods": {
+              "top": 10,
+              "recent": 25
+            },
+            "fallbacks": {
+              "search": false,
+              "appleMode": false
+            },
+            "previewSourceCounts": {
+              "spotify": 0,
+              "apple": 5,
+              "apple_broad": 0,
+              "soundcloud": 0,
+              "youtube": 0,
+              "beatport": 0,
+              "bandcamp": 0,
+              "none": 0
+            },
+            "analysisRounds": {
+              "round1": {
+                "attempted": 5,
+                "withPreview": 5
+              },
+              "round2": {
+                "attempted": 0,
+                "withPreview": 0
+              }
+            },
+            "initialSpotifyTracks": 35,
+            "initialSpotifyTracksWithPreview": 0,
+            "missingSpotifyPreviewSample": [
+              "0QpST3fcy7z1xcdFGFTk3D",
+              "7IpHgRSdnWqAID7CVZGXWo",
+              "6SF8B62eGhQ22bWyVJNRxU",
+              "273GJ8gvmeGI4LXKlcbBGJ",
+              "21Oh412OvkEtnqkYhrtLE2"
+            ],
+            "spotifyPreviewRecovered": 0,
+            "soundcloudRescue": 0,
+            "previewRecovery": {
+              "attempts": 0,
+              "queries": 0,
+              "hits": 0,
+              "marketsTried": [],
+              "firstHit": null,
+              "relaxedAttempts": 0,
+              "suffixStrips": 0
+            },
+            "fastMode": true,
+            "previewRecoveryLimited": false,
+            "spotifyPreviewSuppressed": 0,
+            "spotifySuppressedRestored": 0,
+            "soundcloudDiagnostics": {
+              "attempts": 0,
+              "hits": 0,
+              "queries": []
+            },
+            "previewStrategy": "apple_primary",
+            "appleOverrideSpotify": 0,
+            "spotifyRecoveryDisabled": false,
+            "soundcloudPrimary": false,
+            "forceSoundCloudTest": false,
+            "forceSkipApple": false,
+            "spotifyPreviewCoveragePercent": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "686f572fffa8f465a2d5cb03",
+      "status": "done",
+      "existingVectors": 0,
+      "passes": [
+        {
+          "strategy": "apple",
+          "analyzed": 5,
+          "sources": {
+            "spotify": 0,
+            "apple": 5,
+            "soundcloud": 0,
+            "youtube": 0,
+            "beatport": 0,
+            "bandcamp": 0,
+            "alternativeSourcesUsed": 0
+          },
+          "acquisitionStats": {
+            "spotifyTokenStatus": "acquired",
+            "initialTracks": 19,
+            "methods": {
+              "top": 10,
+              "recent": 9
+            },
+            "fallbacks": {
+              "search": false,
+              "appleMode": false
+            },
+            "previewSourceCounts": {
+              "spotify": 0,
+              "apple": 5,
+              "apple_broad": 0,
+              "soundcloud": 0,
+              "youtube": 0,
+              "beatport": 0,
+              "bandcamp": 0,
+              "none": 0
+            },
+            "analysisRounds": {
+              "round1": {
+                "attempted": 5,
+                "withPreview": 5
+              },
+              "round2": {
+                "attempted": 0,
+                "withPreview": 0
+              }
+            },
+            "initialSpotifyTracks": 19,
+            "initialSpotifyTracksWithPreview": 0,
+            "missingSpotifyPreviewSample": [
+              "7qvTHdpc9qu4TMPur5vs9w",
+              "6Z2McHf57ikVCiAkWvicg1",
+              "0rBMYJyYoQIX6ehQA3oTaM",
+              "4Le2HJBkILI93BfPLhFa0R",
+              "0OHTsNrVPPzSEmwqehnJe3"
+            ],
+            "spotifyPreviewRecovered": 0,
+            "soundcloudRescue": 0,
+            "previewRecovery": {
+              "attempts": 0,
+              "queries": 0,
+              "hits": 0,
+              "marketsTried": [],
+              "firstHit": null,
+              "relaxedAttempts": 0,
+              "suffixStrips": 0
+            },
+            "fastMode": true,
+            "previewRecoveryLimited": false,
+            "spotifyPreviewSuppressed": 0,
+            "spotifySuppressedRestored": 0,
+            "soundcloudDiagnostics": {
+              "attempts": 0,
+              "hits": 0,
+              "queries": []
+            },
+            "previewStrategy": "apple_primary",
+            "appleOverrideSpotify": 0,
+            "spotifyRecoveryDisabled": false,
+            "soundcloudPrimary": false,
+            "forceSoundCloudTest": false,
+            "forceSkipApple": false,
+            "spotifyPreviewCoveragePercent": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "686f572fffa8f465a2d5cb04",
+      "status": "done",
+      "existingVectors": 0,
+      "passes": [
+        {
+          "strategy": "apple",
+          "analyzed": 4,
+          "sources": {
+            "spotify": 0,
+            "apple": 4,
+            "soundcloud": 0,
+            "youtube": 0,
+            "beatport": 0,
+            "bandcamp": 0,
+            "alternativeSourcesUsed": 0
+          },
+          "acquisitionStats": {
+            "spotifyTokenStatus": "acquired",
+            "initialTracks": 78,
+            "methods": {
+              "top": 10,
+              "recent": 68
+            },
+            "fallbacks": {
+              "search": false,
+              "appleMode": false
+            },
+            "previewSourceCounts": {
+              "spotify": 0,
+              "apple": 2,
+              "apple_broad": 2,
+              "soundcloud": 0,
+              "youtube": 0,
+              "beatport": 0,
+              "bandcamp": 0,
+              "none": 1
+            },
+            "analysisRounds": {
+              "round1": {
+                "attempted": 5,
+                "withPreview": 4
+              },
+              "round2": {
+                "attempted": 0,
+                "withPreview": 0
+              }
+            },
+            "initialSpotifyTracks": 78,
+            "initialSpotifyTracksWithPreview": 0,
+            "missingSpotifyPreviewSample": [
+              "0p761VSAObNRJF855bIHRF",
+              "7zkM2VrMD0DvAxNrxZCICt",
+              "6xBStCehTYeBqsGxtiXWbJ",
+              "3Kjv02nul4fEHcQJOSCOJk",
+              "0QOXUbu5PXFPEsle2RphS2"
+            ],
+            "spotifyPreviewRecovered": 0,
+            "soundcloudRescue": 0,
+            "previewRecovery": {
+              "attempts": 0,
+              "queries": 0,
+              "hits": 0,
+              "marketsTried": [],
+              "firstHit": null,
+              "relaxedAttempts": 0,
+              "suffixStrips": 0
+            },
+            "fastMode": true,
+            "previewRecoveryLimited": false,
+            "spotifyPreviewSuppressed": 0,
+            "spotifySuppressedRestored": 0,
+            "soundcloudDiagnostics": {
+              "attempts": 1,
+              "hits": 0,
+              "queries": [
+                "16teen :: Rocknroll"
+              ]
+            },
+            "previewStrategy": "apple_primary",
+            "appleOverrideSpotify": 0,
+            "spotifyRecoveryDisabled": true,
+            "soundcloudPrimary": false,
+            "forceSoundCloudTest": false,
+            "forceSkipApple": false,
+            "spotifyPreviewCoveragePercent": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "686f572fffa8f465a2d5cb05",
+      "status": "done",
+      "existingVectors": 0,
+      "passes": [
+        {
+          "strategy": "apple",
+          "analyzed": 2,
+          "sources": {
+            "spotify": 0,
+            "apple": 2,
+            "soundcloud": 0,
+            "youtube": 0,
+            "beatport": 0,
+            "bandcamp": 0,
+            "alternativeSourcesUsed": 0
+          },
+          "acquisitionStats": {
+            "spotifyTokenStatus": "acquired",
+            "initialTracks": 42,
+            "methods": {
+              "top": 10,
+              "recent": 32
+            },
+            "fallbacks": {
+              "search": false,
+              "appleMode": false
+            },
+            "previewSourceCounts": {
+              "spotify": 0,
+              "apple": 2,
+              "apple_broad": 0,
+              "soundcloud": 0,
+              "youtube": 0,
+              "beatport": 0,
+              "bandcamp": 0,
+              "none": 3
+            },
+            "analysisRounds": {
+              "round1": {
+                "attempted": 5,
+                "withPreview": 2
+              },
+              "round2": {
+                "attempted": 0,
+                "withPreview": 0
+              }
+            },
+            "initialSpotifyTracks": 42,
+            "initialSpotifyTracksWithPreview": 0,
+            "missingSpotifyPreviewSample": [
+              "0Ed3Md9WesYA0qTvcyo50A",
+              "6xNouwojGWhHlweVGfAI9H",
+              "6HamqpndailP6wZUFRABhL",
+              "4MsbjBEdh7h0duFHLQMqL8",
+              "3hEYoFSqyac1ogo6rJuR2f"
+            ],
+            "spotifyPreviewRecovered": 0,
+            "soundcloudRescue": 0,
+            "previewRecovery": {
+              "attempts": 0,
+              "queries": 0,
+              "hits": 0,
+              "marketsTried": [],
+              "firstHit": null,
+              "relaxedAttempts": 0,
+              "suffixStrips": 0
+            },
+            "fastMode": true,
+            "previewRecoveryLimited": false,
+            "spotifyPreviewSuppressed": 0,
+            "spotifySuppressedRestored": 0,
+            "soundcloudDiagnostics": {
+              "attempts": 3,
+              "hits": 0,
+              "queries": [
+                "Surprise Chef :: Have You Fed Baby Huey Today",
+                "Surprise Chef :: Dinner Time",
+                "Surprise Chef :: New Ferrari"
+              ]
+            },
+            "previewStrategy": "apple_primary",
+            "appleOverrideSpotify": 0,
+            "spotifyRecoveryDisabled": true,
+            "soundcloudPrimary": false,
+            "forceSoundCloudTest": false,
+            "forceSkipApple": false,
+            "spotifyPreviewCoveragePercent": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "686f572fffa8f465a2d5cb06",
+      "status": "error",
+      "message": "analyze-artist failed 500"
+    },
+    {
+      "name": "686f572fffa8f465a2d5cb07",
+      "status": "error",
+      "message": "analyze-artist failed 500"
+    },
+    {
+      "name": "686f572fffa8f465a2d5cb08",
+      "status": "error",
+      "message": "analyze-artist failed 500"
+    },
+    {
+      "name": "686f572fffa8f465a2d5cb09",
+      "status": "error",
+      "message": "analyze-artist failed 500"
+    },
+    {
+      "name": "686f572fffa8f465a2d5cb0a",
+      "status": "error",
+      "message": "analyze-artist failed 500"
+    },
+    {
+      "name": "686f572fffa8f465a2d5cb0b",
+      "status": "done",
+      "existingVectors": 0,
+      "passes": [
+        {
+          "strategy": "apple",
+          "analyzed": 0,
+          "sources": {},
+          "acquisitionStats": {
+            "spotifyTokenStatus": "acquired",
+            "initialTracks": 18,
+            "methods": {
+              "top": 10,
+              "recent": 8
+            },
+            "fallbacks": {
+              "search": false,
+              "appleMode": false
+            },
+            "previewSourceCounts": {
+              "spotify": 0,
+              "apple": 0,
+              "apple_broad": 0,
+              "soundcloud": 0,
+              "youtube": 0,
+              "beatport": 0,
+              "bandcamp": 0,
+              "none": 5
+            },
+            "analysisRounds": {
+              "round1": {
+                "attempted": 5,
+                "withPreview": 0
+              },
+              "round2": {
+                "attempted": 0,
+                "withPreview": 0
+              }
+            },
+            "initialSpotifyTracks": 18,
+            "initialSpotifyTracksWithPreview": 0,
+            "missingSpotifyPreviewSample": [
+              "44Xyja7xYPlVC6v2CeweSi",
+              "5PhPoRp2JKCf6DFPRbvj71",
+              "3qNWjZnk8czRL8u2ANUsYh",
+              "0vFzdbPUKZKZ9Xn9GfvIS7",
+              "4vJk5lD1Lk89jgBOk8E7zK"
+            ],
+            "spotifyPreviewRecovered": 0,
+            "soundcloudRescue": 0,
+            "previewRecovery": {
+              "attempts": 0,
+              "queries": 0,
+              "hits": 0,
+              "marketsTried": [],
+              "firstHit": null,
+              "relaxedAttempts": 0,
+              "suffixStrips": 0
+            },
+            "fastMode": true,
+            "previewRecoveryLimited": false,
+            "spotifyPreviewSuppressed": 0,
+            "spotifySuppressedRestored": 0,
+            "soundcloudDiagnostics": {
+              "attempts": 5,
+              "hits": 0,
+              "queries": [
+                "Måneskin :: GOSSIP (feat. Tom Morello)",
+                "Stray Kids :: Come Play (from the series Arcane League of Legends)",
+                "BABYMETAL :: METALI!! (feat. Tom Morello)",
+                "Tom Morello :: Let’s Get The Party Started (feat. Bring Me The Horizon)",
+                "Tom Morello :: One Last Dance (From \"Venom: The Last Dance\")"
+              ]
+            },
+            "previewStrategy": "apple_primary",
+            "appleOverrideSpotify": 0,
+            "spotifyRecoveryDisabled": true,
+            "soundcloudPrimary": false,
+            "forceSoundCloudTest": false,
+            "forceSkipApple": false,
+            "spotifyPreviewCoveragePercent": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "686f572fffa8f465a2d5cb0c",
+      "status": "error",
+      "message": "analyze-artist failed 500"
+    }
+  ]
+}
+===BATCH_COVERAGE_JSON_END===
+Wrote results to /tmp/batch_coverage_results.json

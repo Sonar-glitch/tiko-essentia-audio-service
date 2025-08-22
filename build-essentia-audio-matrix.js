@@ -18,9 +18,9 @@ async function buildEssentiaAudioProfileMatrix() {
   
   const fetch = (await import('node-fetch')).default;
   
-  const client = new MongoClient(process.env.MONGODB_URI || 'mongodb+srv://furqanzemail:XJfBasTxNcle2CEs@sonaredm.g4cdx.mongodb.net/test?retryWrites=true&w=majority&appName=SonarEDM');
+  const client = new MongoClient(process.env.MONGODB_URI || 'mongodb://localhost:27017/sonaredm');
   await client.connect();
-  const db = client.db('test');
+  const db = client.db(process.env.MONGODB_DB || 'sonaredm');
   const artistGenresCollection = db.collection('artistGenres');
   
   // Verify Essentia service is available

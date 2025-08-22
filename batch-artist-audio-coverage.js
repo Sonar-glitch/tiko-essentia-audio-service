@@ -73,17 +73,19 @@ const fastModeFlag = hasFlag('fastMode') ? true : (hasFlag('noFastMode') ? false
       // exact-ish match for the requested genre
       q.genres.$elemMatch.$regex = new RegExp(genreFilter.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'), 'i');
     }
-    // Only select artists that are missing an Essentia profile to resume work efficiently.
-    const missingProfileOrEmpty = { $or: [ { essentiaAudioProfile: { $exists: false } }, { 'essentiaAudioProfile.trackMatrix': { $exists: false } }, { 'essentiaAudioProfile.trackMatrix': { $size: 0 } } ] };
+  // Only select artists that are missing an Essentia profile or have a staged/partial profile to resume work efficiently.
+  // We include `essentiaProfileStaged:true` so partially-populated profiles are reprocessed until they reach `maxTracks`.
+  const missingProfileOrEmpty = { $or: [ { essentiaAudioProfile: { $exists: false } }, { 'essentiaAudioProfile.trackMatrix': { $exists: false } }, { 'essentiaAudioProfile.trackMatrix': { $size: 0 } }, { essentiaProfileStaged: true } ] };
     const baseQ = Object.keys(q).length ? { $and: [ q, missingProfileOrEmpty ] } : missingProfileOrEmpty;
 
-    artists = await artistCol.find(baseQ, { projection: { name:1, spotifyId:1, genres:1, essentiaProfileBuilt:1 } })
+  artists = await artistCol.find(baseQ, { projection: { name:1, spotifyId:1, genres:1, essentiaProfileBuilt:1, essentiaAudioProfile:1, essentiaProfileStaged:1 } })
       .limit(limit)
       .toArray();
   }
 
   console.log(`Loaded ${artists.length} artists (limit=${limit}).`);
   let improved = 0; let skipped = 0; let scTriggered = 0; let errors = 0;
+  let writesSucceeded = 0; let writesFailed = 0; let stagedCreated = 0;
   const results = [];
 
   for (const artist of artists) {
@@ -103,6 +105,18 @@ const fastModeFlag = hasFlag('fastMode') ? true : (hasFlag('noFastMode') ? false
 
     // Quick existing coverage check: count track vectors for this artist in audio_features
     const existingVectors = await audioCol.countDocuments({ 'features.analysis_source': 'essentia', artist: aName });
+    // Compute staged length from the existing artist doc and how many tracks remain to reach maxTracks
+    const stagedLen = Array.isArray(artist && artist.essentiaAudioProfile && artist.essentiaAudioProfile.trackMatrix) ? artist.essentiaAudioProfile.trackMatrix.length : 0;
+    const remainingTracks = Math.max(0, maxTracks - stagedLen);
+    // If staged already meets or exceeds maxTracks, mark built and skip reprocessing
+    if (stagedLen >= maxTracks && artist && !artist.essentiaProfileBuilt) {
+      try {
+        const r = await artistCol.updateOne({ _id: artist._id }, { $set: { essentiaProfileBuilt: true, essentiaProfileDate: new Date() }, $unset: { essentiaProfileStaged: '' } });
+        if (r && r.modifiedCount > 0) { writesSucceeded++; process.stdout.write(' MARKED_BUILT'); }
+      } catch (uerr) { writesFailed++; console.error('   ❌ Failed to mark built from staged:', uerr.message); }
+      skipped++; results.push({ name: aName, status: 'already_staged_built' });
+      continue;
+    }
     // If an Essentia profile is already built, skip unless the caller explicitly requests re-run with --force
     if (artist && artist.essentiaProfileBuilt && !hasFlag('force')) {
       process.stdout.write(`skip (essentia profile exists)\n`);
@@ -128,7 +142,8 @@ const fastModeFlag = hasFlag('fastMode') ? true : (hasFlag('noFastMode') ? false
       const entry = { name: aName, status: 'processing', existingVectors, passes: [] };
       let lastAnalysis = null;
       if (!soundcloudOnly && appleFirst) {
-        const appleResp = await callAnalyze(aName, spotifyId, existingGenres, 'apple_primary');
+        // Request only remaining tracks when there's a staged partial profile
+        const appleResp = await callAnalyze(aName, spotifyId, existingGenres, 'apple_primary', { maxTracks: remainingTracks || maxTracks });
         reportResult('apple', appleResp);
         lastAnalysis = appleResp;
         const analyzed = appleResp.metadata?.totalTracksAnalyzed || 0;
@@ -142,7 +157,7 @@ const fastModeFlag = hasFlag('fastMode') ? true : (hasFlag('noFastMode') ? false
         if (stillMissing) {
           scTriggered++;
           // SoundCloud removed: replace soundcloud_primary strategy with 'apple_primary' for diagnostic runs
-          const scResp = await callAnalyze(aName, spotifyId, existingGenres, 'apple_primary', { forceSoundCloudTest: true });
+          const scResp = await callAnalyze(aName, spotifyId, existingGenres, 'apple_primary', { forceSoundCloudTest: true, maxTracks: remainingTracks || maxTracks });
           // legacy label kept for compatibility but the analysis now prefers Apple/Deezer paths
           reportResult('soundcloud', scResp);
           lastAnalysis = scResp || lastAnalysis;
@@ -165,8 +180,34 @@ const fastModeFlag = hasFlag('fastMode') ? true : (hasFlag('noFastMode') ? false
             spectralFeatures: lastAnalysis.spectralFeatures || null,
             metadata: lastAnalysis.metadata || {}
           };
-          await artistCol.updateOne({ _id: artist._id }, { $set: { essentiaAudioProfile: profile, essentiaProfileBuilt: true, essentiaProfileDate: new Date(), essentiaVersion: lastAnalysis.metadata?.version || '2.0' } });
-          process.stdout.write(' UPDATED_ARTIST');
+          // Write the profile first, then set the "built" flag only after verifying the profile was written
+          try {
+            const updProfileRes = await artistCol.updateOne({ _id: artist._id }, { $set: { essentiaAudioProfile: profile, essentiaVersion: lastAnalysis.metadata?.version || '2.0' } });
+            // Mark the profile as built only when we have the configured number of tracks (maxTracks).
+            // If we have some tracks but fewer than maxTracks, save as a staged profile so subsequent runs resume
+            const tmLen = Array.isArray(profile.trackMatrix) ? profile.trackMatrix.length : 0;
+            if (updProfileRes && updProfileRes.modifiedCount > 0 && tmLen >= maxTracks) {
+              // Complete profile
+              await artistCol.updateOne({ _id: artist._id }, { $set: { essentiaProfileBuilt: true, essentiaProfileDate: new Date() }, $unset: { essentiaProfileStaged: '' } });
+              writesSucceeded++;
+              process.stdout.write(' UPDATED_ARTIST');
+              process.stdout.write('\nMETRIC|essentia_write|success');
+            } else if (updProfileRes && updProfileRes.modifiedCount > 0 && tmLen > 0) {
+              // Partial/staged profile: save it but do not set built flag so the resume batch will continue
+              await artistCol.updateOne({ _id: artist._id }, { $set: { essentiaProfileStaged: true, essentiaProfileDate: new Date() } });
+              stagedCreated++;
+              writesSucceeded++;
+              process.stdout.write(' STAGED_ARTIST');
+              process.stdout.write('\nMETRIC|essentia_write|staged');
+            } else {
+              // Log a warning when the profile is missing/empty or the update had no effect
+              writesFailed++;
+              console.error('   ⚠️ Profile write did not produce a usable trackMatrix or no change was recorded; leaving essentiaProfileBuilt unset');
+              process.stdout.write('\nMETRIC|essentia_write|failure');
+            }
+          } catch (uerr) {
+            console.error('   ❌ Failed to update artist profile:', uerr.message);
+          }
         } catch (uerr) {
           console.error('   ❌ Failed to update artist profile:', uerr.message);
         }
@@ -182,9 +223,9 @@ const fastModeFlag = hasFlag('fastMode') ? true : (hasFlag('noFastMode') ? false
   }
 
   console.log('\n\n===== SUMMARY =====');
-  console.log({ total: artists.length, improved, skipped, scTriggered, errors });
+  console.log({ total: artists.length, improved, skipped, scTriggered, errors, writesSucceeded, writesFailed, stagedCreated });
   try {
-    const payload = { total: artists.length, improved, skipped, scTriggered, errors, results };
+  const payload = { total: artists.length, improved, skipped, scTriggered, errors, writesSucceeded, writesFailed, stagedCreated, results };
     // Always print JSON to stdout so Heroku one-off runs can capture it even if /tmp write fails
     console.log('===BATCH_COVERAGE_JSON_START===');
     console.log(JSON.stringify(payload, null, 2));

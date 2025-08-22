@@ -1,0 +1,60 @@
+{
+  "spotifyTokenStatus": "missing",
+  "initialTracks": 52,
+  "methods": {
+    "top": 0,
+    "recent": 0
+  },
+  "fallbacks": {
+    "search": false,
+    "appleMode": true
+  },
+  "previewSourceCounts": {
+    "spotify": 5,
+    "apple": 0,
+    "apple_broad": 0,
+    "soundcloud": 0,
+    "youtube": 0,
+    "beatport": 0,
+    "bandcamp": 0,
+    "none": 0
+  },
+  "analysisRounds": {
+    "round1": {
+      "attempted": 5,
+      "withPreview": 5
+    },
+    "round2": {
+      "attempted": 0,
+      "withPreview": 0
+    }
+  },
+  "initialSpotifyTracks": 52,
+  "initialSpotifyTracksWithPreview": 52,
+  "missingSpotifyPreviewSample": [],
+  "spotifyPreviewRecovered": 0,
+  "soundcloudRescue": 0,
+  "previewRecovery": {
+    "attempts": 0,
+    "queries": 0,
+    "hits": 0,
+    "marketsTried": [],
+    "firstHit": null,
+    "relaxedAttempts": 0,
+    "suffixStrips": 0
+  },
+  "fastMode": true,
+  "previewRecoveryLimited": false,
+  "soundcloudDiagnostics": {
+    "attempts": 0,
+    "hits": 0,
+    "queries": []
+  },
+  "previewStrategy": "apple_primary",
+  "appleOverrideSpotify": 0,
+  "spotifyRecoveryDisabled": false,
+  "soundcloudPrimary": true,
+  "forceSoundCloudTest": false,
+  "forceSkipApple": true,
+  "spotifyPreviewCoveragePercent": 100
+}

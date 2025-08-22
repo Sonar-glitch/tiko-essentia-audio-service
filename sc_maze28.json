@@ -1,0 +1,95 @@
+{
+  "success": false,
+  "error": "No tracks could be analyzed and no genres available",
+  "failSubtype": "no_preview",
+  "artistName": "Maze 28",
+  "tracksAttempted": 5,
+  "failureReasons": [
+    "no_preview_round1",
+    "no_preview_round1",
+    "no_preview_round1",
+    "no_preview_round1",
+    "no_preview_round1"
+  ],
+  "correlationId": "ab5773a7-bd68-44a3-9f98-3c0ed516ef75",
+  "spotifyTokenStatus": "acquired",
+  "acquisitionStats": {
+    "spotifyTokenStatus": "acquired",
+    "initialTracks": 20,
+    "methods": {
+      "top": 0,
+      "recent": 0
+    },
+    "fallbacks": {
+      "search": true,
+      "appleMode": false
+    },
+    "previewSourceCounts": {
+      "spotify": 0,
+      "apple": 0,
+      "apple_broad": 0,
+      "soundcloud": 0,
+      "youtube": 0,
+      "beatport": 0,
+      "bandcamp": 0,
+      "none": 5
+    },
+    "analysisRounds": {
+      "round1": {
+        "attempted": 5,
+        "withPreview": 0
+      },
+      "round2": {
+        "attempted": 0,
+        "withPreview": 0
+      }
+    },
+    "initialSpotifyTracks": 20,
+    "initialSpotifyTracksWithPreview": 0,
+    "missingSpotifyPreviewSample": [
+      "1rc0UTTxbcR8fb6rC8zpEV",
+      "7fXjEj0jnhZRxLjry0b25s",
+      "3zJ4wdyAd6ONEFqpYRFzz8",
+      "1k1SDyum5Mw0QkWJjF0Tm3",
+      "6J7aLppjGUqkmw9MtGzZpY"
+    ],
+    "spotifyPreviewRecovered": 0,
+    "soundcloudRescue": 0,
+    "previewRecovery": {
+      "attempts": 0,
+      "queries": 0,
+      "hits": 0,
+      "marketsTried": [],
+      "firstHit": null,
+      "relaxedAttempts": 0,
+      "suffixStrips": 5
+    },
+    "fastMode": true,
+    "previewRecoveryLimited": false,
+    "soundcloudDiagnostics": {
+      "attempts": 20,
+      "hits": 0,
+      "queries": [
+        "Maze 28 :: This Is Just a Dream - Hernan Cattaneo & Marcelo Vasami Remix - Mixed",
+        "Maze 28 :: This Is Just a Dream",
+        "Maze 28",
+        "Maze 28 :: This Is Just a Dream - Hernan Cattaneo & Marcelo Vasami Remix - Mixed",
+        "Maze 28 :: This Is Just a Dream - Mixed",
+        "Maze 28 :: This Is Just a Dream",
+        "Maze 28",
+        "Maze 28 :: This Is Just a Dream - Mixed",
+        "Simos Tagias :: Melted Pot - Maze 28 Remix",
+        "Simos Tagias :: Melted Pot",
+        "Simos Tagias",
+        "Simos Tagias :: Melted Pot - Maze 28 Remix"
+      ]
+    },
+  "previewStrategy": "apple_primary",
+    "appleOverrideSpotify": 0,
+    "spotifyRecoveryDisabled": true,
+    "soundcloudPrimary": true,
+    "forceSoundCloudTest": true,
+    "forceSkipApple": true,
+    "spotifyPreviewCoveragePercent": 0
+  }
+}

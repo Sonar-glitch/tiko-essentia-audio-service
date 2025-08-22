@@ -1,0 +1,9 @@
+Loaded 3 artists (limit=50).
+
+👉 Lane 8 ... apple[tracks=5, apple=5, sc=0]
+👉 Maze 28 ... apple[tracks=5, apple=5, sc=0]
+👉 Artist Name ... apple[tracks=5, apple=5, sc=0]
+
+===== SUMMARY =====
+{ total: 3, improved: 3, skipped: 0, scTriggered: 0, errors: 0 }
+cat: /tmp/batch_coverage_results.json: No such file or directory

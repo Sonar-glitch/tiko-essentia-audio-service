@@ -1,0 +1,353 @@
+{
+  "success": true,
+  "artistName": "Maze 28",
+  "trackMatrix": [
+    {
+      "trackId": 1735941981,
+      "name": "Cosmic Dot",
+      "artist": "Ruben Karapetyan & Maze 28",
+      "popularity": 50,
+      "isRecentRelease": false,
+      "albumInfo": {
+        "name": "Cosmic Dot"
+      },
+      "previewUrl": "https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview112/v4/71/7c/f4/717cf4a3-b1a8-67f1-6433-2f93ed42546c/mzaf_6020829297967739165.plus.aac.p.m4a",
+      "audioSource": "spotify",
+      "alternativeSourceInfo": null,
+      "essentiaFeatures": {
+        "spectral_centroid": 2461.0402214786805,
+        "spectral_rolloff": 6817.536023462441,
+        "spectral_flux": 49.91770649259952,
+        "mfcc_mean": 12.07457390130471,
+        "chroma_mean": 0.351371480114564,
+        "tempo": 118.44955592924643,
+        "beats_per_minute": 90.10602872160977,
+        "rhythm_strength": 0.11452834628446129,
+        "key_strength": 0.11434997328732499,
+        "harmonicity": 0.8184693835510566,
+        "danceability": 0.1834668974460527,
+        "energy": 0.8203023888921985,
+        "valence": 0.38844509258641624,
+        "arousal": 0.5812654673427207,
+        "loudness": -5.849046240063849,
+        "dynamic_range": 13.22436536208329,
+        "zerocrossingrate": 0.18109163432488598,
+        "analysis_source": "essentia",
+        "analysis_version": "2.1-beta5",
+        "vector": [
+          0.7127965655826103,
+          0.27003599171611703,
+          0.20207604807360635,
+          0.9402803807394795,
+          0.8115880548887955,
+          0.19783437896571243,
+          0.8289448215305051,
+          0.3912635458279268
+        ]
+      },
+      "analyzedAt": "2025-08-20T20:03:13.655Z",
+      "analysisRound": 1
+    },
+    {
+      "trackId": 1707757978,
+      "name": "Dayaluta",
+      "artist": "G.O.D.A. & Maze 28",
+      "popularity": 50,
+      "isRecentRelease": false,
+      "albumInfo": {
+        "name": "Arabian Nights 3"
+      },
+      "previewUrl": "https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview126/v4/1f/49/de/1f49de6f-3cbf-3df5-6ee9-d243ee2ee6ae/mzaf_6903741913800415797.plus.aac.p.m4a",
+      "audioSource": "spotify",
+      "alternativeSourceInfo": null,
+      "essentiaFeatures": {
+        "spectral_centroid": 4866.056575332657,
+        "spectral_rolloff": 5306.896189562387,
+        "spectral_flux": 17.22765800758548,
+        "mfcc_mean": 17.866704582625644,
+        "chroma_mean": 0.21934220906196522,
+        "tempo": 123.06960763034914,
+        "beats_per_minute": 138.702990419154,
+        "rhythm_strength": 0.4008997225404265,
+        "key_strength": 0.38175446603437946,
+        "harmonicity": 0.1486351644107613,
+        "danceability": 0.005086216601130067,
+        "energy": 0.7877604881852611,
+        "valence": 0.5458674744484395,
+        "arousal": 0.15301387255857946,
+        "loudness": -40.256645884298635,
+        "dynamic_range": 4.066551393901272,
+        "zerocrossingrate": 0.022515356250237862,
+        "analysis_source": "essentia",
+        "analysis_version": "2.1-beta5",
+        "vector": [
+          0.3908965945252767,
+          0.1183196783714977,
+          0.1245731589147403,
+          0.404919791047903,
+          0.5115413641191806,
+          0.86555531285188,
+          0.7315307725891798,
+          0.40650130005243224
+        ]
+      },
+      "analyzedAt": "2025-08-20T20:03:13.923Z",
+      "analysisRound": 1
+    },
+    {
+      "trackId": 1644659720,
+      "name": "Dayaluta",
+      "artist": "G.O.D.A. & Maze 28",
+      "popularity": 50,
+      "isRecentRelease": false,
+      "albumInfo": {
+        "name": "Oriental Trip, Vol. 5 (Compiled by Dj Brahms)"
+      },
+      "previewUrl": "https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview112/v4/cc/09/a3/cc09a30c-f3e7-ca4d-278b-b1ac47f140a8/mzaf_6618012474537364572.plus.aac.p.m4a",
+      "audioSource": "spotify",
+      "alternativeSourceInfo": null,
+      "essentiaFeatures": {
+        "spectral_centroid": 2341.1953570588767,
+        "spectral_rolloff": 6039.982544284305,
+        "spectral_flux": 12.673329789016874,
+        "mfcc_mean": -21.08161623530925,
+        "chroma_mean": 0.3781662381696411,
+        "tempo": 129.53765916022638,
+        "beats_per_minute": 142.59491136893075,
+        "rhythm_strength": 0.7106737396714697,
+        "key_strength": 0.22168090057785994,
+        "harmonicity": 0.5173045439895958,
+        "danceability": 0.7870288443898574,
+        "energy": 0.6730631447159219,
+        "valence": 0.9176175072201183,
+        "arousal": 0.4576116130169783,
+        "loudness": -38.152463161201496,
+        "dynamic_range": 18.43532983132397,
+        "zerocrossingrate": 0.154112039836946,
+        "analysis_source": "essentia",
+        "analysis_version": "2.1-beta5",
+        "vector": [
+          0.9335153998131853,
+          0.48574225226227097,
+          0.8875026039610283,
+          0.9148443291664361,
+          0.18412079202776233,
+          0.14024113442977115,
+          0.38280229886560724,
+          0.017177853028261802
+        ]
+      },
+      "analyzedAt": "2025-08-20T20:03:14.186Z",
+      "analysisRound": 1
+    },
+    {
+      "trackId": 1735941986,
+      "name": "Cosmic Dot (Yonsh Remix)",
+      "artist": "Ruben Karapetyan & Maze 28",
+      "popularity": 50,
+      "isRecentRelease": false,
+      "albumInfo": {
+        "name": "Cosmic Dot"
+      },
+      "previewUrl": "https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview122/v4/22/aa/37/22aa379f-2daa-0d8e-06f7-14ceecbf323a/mzaf_1904141731168874056.plus.aac.p.m4a",
+      "audioSource": "spotify",
+      "alternativeSourceInfo": null,
+      "essentiaFeatures": {
+        "spectral_centroid": 4617.696050692519,
+        "spectral_rolloff": 9038.594256414071,
+        "spectral_flux": 3.0183554187490635,
+        "mfcc_mean": -13.339430903763738,
+        "chroma_mean": 0.22443366306427293,
+        "tempo": 146.62218162278145,
+        "beats_per_minute": 127.1140255869751,
+        "rhythm_strength": 0.2164411421288175,
+        "key_strength": 0.7206870278075428,
+        "harmonicity": 0.3764016550517393,
+        "danceability": 0.19697462501366592,
+        "energy": 0.4790027330908748,
+        "valence": 0.4515414514664653,
+        "arousal": 0.6842283784322372,
+        "loudness": -57.93367030900518,
+        "dynamic_range": 7.196383437991032,
+        "zerocrossingrate": 0.03088222623726833,
+        "analysis_source": "essentia",
+        "analysis_version": "2.1-beta5",
+        "vector": [
+          0.49917328559155894,
+          0.7853691062254167,
+          0.4010793941149149,
+          0.3149582142971119,
+          0.14520395692710086,
+          0.5075776523402664,
+          0.02340634219793536,
+          0.19636520291136428
+        ]
+      },
+      "analyzedAt": "2025-08-20T20:03:14.452Z",
+      "analysisRound": 1
+    },
+    {
+      "trackId": 1736485221,
+      "name": "Sense",
+      "artist": "Maze 28 & TEELCO",
+      "popularity": 50,
+      "isRecentRelease": false,
+      "albumInfo": {
+        "name": "Sense - Single"
+      },
+      "previewUrl": "https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview112/v4/8c/34/83/8c34835d-7340-67e7-6b26-d0d43e809b7a/mzaf_1676391474766611370.plus.aac.p.m4a",
+      "audioSource": "spotify",
+      "alternativeSourceInfo": null,
+      "essentiaFeatures": {
+        "spectral_centroid": 2103.929730364004,
+        "spectral_rolloff": 7095.752566855041,
+        "spectral_flux": 12.811741487996775,
+        "mfcc_mean": 19.27026141106616,
+        "chroma_mean": 0.6218830781699365,
+        "tempo": 100.46928750290675,
+        "beats_per_minute": 156.02886454977335,
+        "rhythm_strength": 0.8928254928119599,
+        "key_strength": 0.43816296295166146,
+        "harmonicity": 0.8699765550223215,
+        "danceability": 0.22662658458624496,
+        "energy": 0.391726315477434,
+        "valence": 0.740586029298774,
+        "arousal": 0.6686280309013375,
+        "loudness": -15.966098233224514,
+        "dynamic_range": 12.675270316746685,
+        "zerocrossingrate": 0.1120344540780704,
+        "analysis_source": "essentia",
+        "analysis_version": "2.1-beta5",
+        "vector": [
+          0.14469397455761746,
+          0.7540385031118633,
+          0.8196239722029943,
+          0.7802402784137803,
+          0.7716742548569284,
+          0.5327604461115114,
+          0.7593609763058671,
+          0.8677108977679926
+        ]
+      },
+      "analyzedAt": "2025-08-20T20:03:14.716Z",
+      "analysisRound": 1
+    }
+  ],
+  "genreMapping": {
+    "inferredGenres": [],
+    "source": "none",
+    "confidence": 0
+  },
+  "recentEvolution": {
+    "evolution": "insufficient_data"
+  },
+  "averageFeatures": {
+    "spectral_centroid": 3277.9835869853473,
+    "spectral_rolloff": 6859.752316115648,
+    "spectral_flux": 19.12975823918954,
+    "mfcc_mean": 2.9580985511847047,
+    "chroma_mean": 0.35903933371607594,
+    "tempo": 123.62965836910203,
+    "beats_per_minute": 130.90936412928858,
+    "rhythm_strength": 0.467073688687427,
+    "key_strength": 0.3753270661317537,
+    "harmonicity": 0.5461574604050948,
+    "danceability": 0.2798366336073902,
+    "energy": 0.630371014072338,
+    "valence": 0.6088115110040426,
+    "arousal": 0.5089494724503706,
+    "loudness": -31.63158476555874,
+    "dynamic_range": 11.119580068409249,
+    "zerocrossingrate": 0.10012714214548173
+  },
+  "spectralFeatures": {
+    "spectralCentroid": 3277.9835869853473,
+    "spectralRolloff": 6859.752316115648,
+    "mfcc": 2.9580985511847047
+  },
+  "metadata": {
+    "totalTracksAnalyzed": 5,
+    "topTracks": 5,
+    "recentReleases": 0,
+    "round1Success": 5,
+    "round2Success": 0,
+    "analysisRounds": 1,
+    "successRate": "100.0%",
+    "analysisTime": 2361,
+    "source": "essentia",
+    "stagedAnalysis": true,
+    "fastMode": true,
+    "audioSources": {
+      "spotify": 5,
+      "apple": 0,
+      "soundcloud": 0,
+      "youtube": 0,
+      "beatport": 0,
+      "bandcamp": 0,
+      "alternativeSourcesUsed": 0
+    },
+    "lowConfidenceAudio": false,
+    "failureReasons": [],
+    "spotifyTokenStatus": "missing"
+  },
+  "acquisitionStats": {
+    "spotifyTokenStatus": "missing",
+    "initialTracks": 52,
+    "methods": {
+      "top": 0,
+      "recent": 0
+    },
+    "fallbacks": {
+      "search": false,
+      "appleMode": true
+    },
+    "previewSourceCounts": {
+      "spotify": 5,
+      "apple": 0,
+      "apple_broad": 0,
+      "soundcloud": 0,
+      "youtube": 0,
+      "beatport": 0,
+      "bandcamp": 0,
+      "none": 0
+    },
+    "analysisRounds": {
+      "round1": {
+        "attempted": 5,
+        "withPreview": 5
+      },
+      "round2": {
+        "attempted": 0,
+        "withPreview": 0
+      }
+    },
+    "initialSpotifyTracks": 52,
+    "initialSpotifyTracksWithPreview": 52,
+    "missingSpotifyPreviewSample": [],
+    "spotifyPreviewRecovered": 0,
+    "soundcloudRescue": 0,
+    "previewRecovery": {
+      "attempts": 0,
+      "queries": 0,
+      "hits": 0,
+      "marketsTried": [],
+      "firstHit": null,
+      "relaxedAttempts": 0,
+      "suffixStrips": 0
+    },
+    "fastMode": true,
+    "previewRecoveryLimited": false,
+    "soundcloudDiagnostics": {
+      "attempts": 0,
+      "hits": 0,
+      "queries": []
+    },
+  "previewStrategy": "apple_primary",
+    "appleOverrideSpotify": 0,
+    "spotifyRecoveryDisabled": false,
+    "soundcloudPrimary": true,
+    "forceSoundCloudTest": false,
+    "forceSkipApple": true,
+    "spotifyPreviewCoveragePercent": 100
+  }
+}

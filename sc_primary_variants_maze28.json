@@ -1,0 +1,30 @@
+[
+  {
+    "label": "A_body_bool",
+    "soundcloudCount": 0,
+    "none": 5,
+    "scDiagPresent": false,
+    "trackSources": null
+  },
+  {
+    "label": "B_body_string",
+    "soundcloudCount": 0,
+    "none": 5,
+    "scDiagPresent": false,
+    "trackSources": null
+  },
+  {
+    "label": "D_body_altFlag",
+    "soundcloudCount": 0,
+    "none": 5,
+    "scDiagPresent": false,
+    "trackSources": null
+  },
+  {
+    "label": "E_body_noFlag",
+    "soundcloudCount": 0,
+    "none": 5,
+    "scDiagPresent": false,
+    "trackSources": null
+  }
+]

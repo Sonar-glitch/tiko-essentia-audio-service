@@ -102,57 +102,10 @@ async function findDeezerArtistTracks(artistName, limit = 10) {
   }
 }
 
-async function findSoundCloudAudioUrl(artistName, trackName) {
-  try {
-    console.log(`🔊 Searching SoundCloud for: ${artistName} - ${trackName}`);
-    
-    // SoundCloud search (requires API key)
-    const searchQuery = encodeURIComponent(`${artistName} ${trackName}`);
-    const soundcloudSearchUrl = `https://api.soundcloud.com/tracks?q=${searchQuery}&client_id=${process.env.SOUNDCLOUD_CLIENT_ID}&limit=5`;
-    
-    const fetch = (await import('node-fetch')).default;
-    const response = await fetch(soundcloudSearchUrl);
-    
-    if (!response.ok) {
-      console.log(`⚠️ SoundCloud search failed: ${response.status}`);
-      return null;
-    }
-    
-    const tracks = await response.json();
-    
-    if (!tracks || tracks.length === 0) {
-      console.log(`⚠️ No SoundCloud results for: ${artistName} - ${trackName}`);
-      return null;
-    }
-    
-    // Find tracks that are streamable
-    const streamableTracks = tracks.filter(track => track.streamable && track.stream_url);
-    
-    if (streamableTracks.length === 0) {
-      console.log(`⚠️ No streamable SoundCloud tracks found`);
-      return null;
-    }
-    
-    const bestTrack = streamableTracks[0];
-    
-    // Get the stream URL with client_id
-    const streamUrl = `${bestTrack.stream_url}?client_id=${process.env.SOUNDCLOUD_CLIENT_ID}`;
-    
-    console.log(`✅ Found SoundCloud track: ${bestTrack.title}`);
-    
-    return {
-      audioUrl: streamUrl,
-      title: bestTrack.title,
-      artist: bestTrack.user.username,
-      duration: bestTrack.duration,
-      source: 'soundcloud'
-    };
-    
-  } catch (error) {
-    console.log(`❌ SoundCloud search error: ${error.message}`);
-    return null;
-  }
-}
+// NOTE: SoundCloud helper removed — SoundCloud does not reliably expose direct 30s preview URLs
+// in a stable public API for our use-case. Historically we attempted to use `stream_url` + client_id,
+// but that approach is fragile and caused confusion when previews were unavailable. For clarity the
+// SoundCloud-specific lookup was removed. Use `apple` and `deezer` sources instead.
 
 async function findBeatportPreviewUrl(artistName, trackName) {
   try {
@@ -359,7 +312,6 @@ function inferAudioFeaturesFromGenres(genres, artistName, mode) {
 
 module.exports = {
   findYouTubeAudioUrl,
-  findSoundCloudAudioUrl,
   findBeatportPreviewUrl,
   findDeezerPreviewUrl,
   findDeezerArtistTracks,

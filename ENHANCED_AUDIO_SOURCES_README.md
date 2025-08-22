@@ -95,7 +95,8 @@ trackProfiles.push({
 ```bash
 # Optional - for enhanced fallback capabilities
 YOUTUBE_API_KEY=your_youtube_api_key_here
-SOUNDCLOUD_CLIENT_ID=your_soundcloud_client_id_here
+# SoundCloud integration removed: we no longer rely on SOUNDCLOUD_CLIENT_ID.
+# Use Apple and Deezer preview sources instead.
 ```
 
 #### API Setup Instructions:
@@ -109,7 +110,7 @@ SOUNDCLOUD_CLIENT_ID=your_soundcloud_client_id_here
 **SoundCloud API:**
 1. Register at SoundCloud Developers
 2. Get client ID
-3. Set `SOUNDCLOUD_CLIENT_ID` environment variable
+NOTE: SoundCloud is no longer supported in this service. The SoundCloud stream URLs are unreliable for extracting stable preview clips; the service now prefers `apple` and `deezer`.
 
 ### 5. Metadata Tracking
 
